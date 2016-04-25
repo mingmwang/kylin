@@ -68,12 +68,14 @@ public class DiagnosisInfoCLI extends AbstractApplication {
 
     private CubeMetaExtractor cubeMetaExtractor;
     private HBaseUsageExtractor hBaseUsageExtractor;
+    private KylinConfig kylinConfig;
     private Options options;
     private String exportDest;
 
     public DiagnosisInfoCLI() {
         cubeMetaExtractor = new CubeMetaExtractor();
         hBaseUsageExtractor = new HBaseUsageExtractor();
+        kylinConfig = KylinConfig.getInstanceFromEnv();
 
         options = new Options();
         options.addOption(OPTION_LOG_PERIOD);
@@ -117,7 +119,7 @@ public class DiagnosisInfoCLI extends AbstractApplication {
         cubeMetaExtractor.execute(cubeMetaArgs);
 
         int logPeriod = optionsHelper.hasOption(OPTION_LOG_PERIOD) ? Integer.valueOf(optionsHelper.getOptionValue(OPTION_LOG_PERIOD)) : DEFAULT_LOG_PERIOD;
-        boolean compress = optionsHelper.hasOption(OPTION_COMPRESS) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_COMPRESS)) : false;
+        boolean compress = optionsHelper.hasOption(OPTION_COMPRESS) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_COMPRESS)) : true;
         boolean includeConf = optionsHelper.hasOption(OPTION_INCLUDE_CONF) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_CONF)) : true;
         boolean includeHBase = optionsHelper.hasOption(OPTION_INCLUDE_HBASE) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_HBASE)) : true;
         boolean includeLinux = optionsHelper.hasOption(OPTION_INCLUDE_LINUX) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_LINUX)) : true;
@@ -126,36 +128,6 @@ public class DiagnosisInfoCLI extends AbstractApplication {
         if (includeHBase) {
             String[] hbaseArgs = { "-destDir", exportDest + "hbase", "-project", project };
             hBaseUsageExtractor.execute(hbaseArgs);
-        }
-
-        // export logs
-        if (logPeriod > 0) {
-            logger.info("Start to extract kylin logs in {} days", logPeriod);
-
-            final String logFolder = KylinConfig.getKylinHome() + "/logs/";
-            final String defaultLogFilename = "kylin.log";
-            final File logsDir = new File(exportDir, "logs");
-            final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd");
-
-            FileUtils.forceMkdir(logsDir);
-
-            final ArrayList<String> logFileNames = Lists.newArrayListWithCapacity(logPeriod);
-
-            logFileNames.add(defaultLogFilename);
-            logFileNames.add("kylin.gc");
-            for (int i = 1; i < logPeriod; i++) {
-                Calendar todayCal = Calendar.getInstance();
-                todayCal.add(Calendar.DAY_OF_MONTH, 0 - i);
-                logFileNames.add(defaultLogFilename + "." + format.format(todayCal.getTime()));
-                logFileNames.add("kylin.gc." + Integer.toString(i - 1));
-            }
-
-            for (String logFilename : logFileNames) {
-                File logFile = new File(logFolder + logFilename);
-                if (logFile.exists()) {
-                    FileUtils.copyFileToDirectory(logFile, logsDir);
-                }
-            }
         }
 
         // export conf
@@ -196,6 +168,50 @@ public class DiagnosisInfoCLI extends AbstractApplication {
             FileUtils.copyFileToDirectory(new File(KylinConfig.getKylinHome(), "commit_SHA1"), exportDir);
         } catch (Exception e) {
             logger.warn("Error in export commit id.", e);
+        }
+
+        // export process info
+        try {
+            File basicDir = new File(exportDir, "basic");
+            FileUtils.forceMkdir(basicDir);
+            String output = kylinConfig.getCliCommandExecutor().execute("ps -ef|grep kylin").getSecond();
+            FileUtils.writeStringToFile(new File(basicDir, "process"), output);
+            output = kylinConfig.getCliCommandExecutor().execute("lsb_release -a").getSecond();
+            FileUtils.writeStringToFile(new File(basicDir, "lsb_release"), output);
+        } catch (Exception e) {
+            logger.warn("Error in export process info.", e);
+        }
+
+        // export logs
+        if (logPeriod > 0) {
+            logger.info("Start to extract kylin logs in {} days", logPeriod);
+
+            final String logFolder = KylinConfig.getKylinHome() + "/logs/";
+            final String defaultLogFilename = "kylin.log";
+            final String defaultGCLogFilename = "kylin.gc";
+            final File logsDir = new File(exportDir, "logs");
+            final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd");
+
+            FileUtils.forceMkdir(logsDir);
+
+            final ArrayList<String> logFileNames = Lists.newArrayListWithCapacity(logPeriod);
+
+            logFileNames.add(defaultLogFilename);
+            logFileNames.add(defaultGCLogFilename);
+            for (int i = 1; i < logPeriod; i++) {
+                Calendar todayCal = Calendar.getInstance();
+                todayCal.add(Calendar.DAY_OF_MONTH, 0 - i);
+                logFileNames.add(defaultLogFilename + "." + format.format(todayCal.getTime()));
+                logFileNames.add(defaultGCLogFilename + "." + Integer.toString(i - 1));
+            }
+
+            for (String logFilename : logFileNames) {
+                File logFile = new File(logFolder + logFilename);
+                logger.info("Log file:" + logFile.getAbsolutePath());
+                if (logFile.exists()) {
+                    FileUtils.copyFileToDirectory(logFile, logsDir);
+                }
+            }
         }
 
         // compress to zip package
