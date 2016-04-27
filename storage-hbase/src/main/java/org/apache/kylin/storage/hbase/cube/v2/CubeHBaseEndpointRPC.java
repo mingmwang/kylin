@@ -361,7 +361,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                                     logger.info("Checking BackdoorToggles.getStorageResultDump()");
                                     if (storageResultDumpPath != null) {
                                         try {
-                                            FileUtils.writeByteArrayToFile(new File(BackdoorToggles.getStorageResultDump() + "/" + order), compressed);
+                                            FileUtils.writeByteArrayToFile(new File(storageResultDumpPath + "/" + order), compressed);
                                             logger.info("write to file for part " + order + " finished");
                                         } catch (Exception e) {
                                             logger.error("failed to write for part " + order, e);
