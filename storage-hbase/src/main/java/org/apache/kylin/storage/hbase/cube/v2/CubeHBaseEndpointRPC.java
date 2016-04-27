@@ -357,6 +357,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                                 try {
                                     int order = atomicInteger.incrementAndGet();
                                     byte[] compressed = HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows());
+                                    logger.info("Checking BackdoorToggles.getStorageResultDump()");
                                     if (BackdoorToggles.getStorageResultDump() != null) {
                                         try {
                                             FileUtils.writeByteArrayToFile(new File(BackdoorToggles.getStorageResultDump() + "/" + order), compressed);
