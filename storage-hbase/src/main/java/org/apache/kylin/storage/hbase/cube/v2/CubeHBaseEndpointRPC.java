@@ -18,6 +18,7 @@
 
 package org.apache.kylin.storage.hbase.cube.v2;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.Iterator;
@@ -36,6 +37,7 @@ import java.util.zip.DataFormatException;
 
 import javax.annotation.Nullable;
 
+import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.hadoop.hbase.HConstants;
 import org.apache.hadoop.hbase.client.HConnection;
@@ -125,11 +127,11 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
             this.timeout = HadoopUtil.getCurrentConfiguration().getInt(HConstants.HBASE_RPC_TIMEOUT_KEY, HConstants.DEFAULT_HBASE_RPC_TIMEOUT);
             this.timeout *= KylinConfig.getInstanceFromEnv().getCubeVisitTimeoutTimes();
-            
+
             if (BackdoorToggles.getQueryTimeout() != -1) {
                 this.timeout = BackdoorToggles.getQueryTimeout();
             }
-            
+
             this.timeout *= 1.1;//allow for some delay 
 
             logger.info("Timeout for ExpectedSizeIterator is: " + this.timeout);
@@ -319,6 +321,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
         final AtomicInteger totalScannedCount = new AtomicInteger(0);
         final ExpectedSizeIterator epResultItr = new ExpectedSizeIterator(scanRequests.size() * shardNum);
+        final AtomicInteger atomicInteger = new AtomicInteger(0);
 
         for (final Pair<byte[], byte[]> epRange : getEPKeyRanges(cuboidBaseShard, shardNum, totalShards)) {
             executorService.submit(new Runnable() {
@@ -352,7 +355,17 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                                 abnormalFinish = true;
                             } else {
                                 try {
-                                    epResultItr.append(CompressionUtils.decompress(HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows())));
+                                    int order = atomicInteger.incrementAndGet();
+                                    byte[] compressed = HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows());
+                                    if (BackdoorToggles.getStorageResultDump() != null) {
+                                        try {
+                                            FileUtils.writeByteArrayToFile(new File(BackdoorToggles.getStorageResultDump() + "/" + order), compressed);
+                                            logger.info("write to file for part " + order + " finished");
+                                        } catch (Exception e) {
+                                            logger.error("failed to write for part " + order, e);
+                                        }
+                                    }
+                                    epResultItr.append(CompressionUtils.decompress(compressed));
                                 } catch (IOException | DataFormatException e) {
                                     throw new RuntimeException(logHeader + "Error when decompressing", e);
                                 }
@@ -368,6 +381,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
         }
 
         return new EndpointResultsAsGTScanner(fullGTInfo, epResultItr, scanRequests.get(0).getColumns(), totalScannedCount.get());
+
     }
 
     private String getStatsString(Map.Entry<byte[], CubeVisitProtos.CubeVisitResponse> result) {

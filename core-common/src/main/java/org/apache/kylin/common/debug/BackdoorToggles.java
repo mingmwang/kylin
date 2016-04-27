@@ -42,6 +42,10 @@ public class BackdoorToggles {
         return getString(DEBUG_TOGGLE_HBASE_CUBE_QUERY_PROTOCOL);
     }
 
+    public static String getStorageResultDump() {
+        return getString(DEBUG_TOGGLE_STORAGE_RESULT_DUMP);
+    }
+
     public static boolean getDisableCache() {
         return getBoolean(DEBUG_TOGGLE_DISABLE_QUERY_CACHE);
     }
@@ -153,4 +157,14 @@ public class BackdoorToggles {
      }
      */
     public final static String DEBUG_TOGGLE_QUERY_TIMEOUT = "DEBUG_TOGGLE_QUERY_TIMEOUT";
+
+    /**
+     * set DEBUG_TOGGLE_STORAGE_RESULT_DUMP="path_to_dump" to dump the result from cube storage
+     *
+     example:(put it into request body)
+     "backdoorToggles": {
+     "DEBUG_TOGGLE_STORAGE_RESULT_DUMP": "/kylin/data/"
+     }
+     */
+    public final static String DEBUG_TOGGLE_STORAGE_RESULT_DUMP = "DEBUG_TOGGLE_STORAGE_RESULT_DUMP";
 }
