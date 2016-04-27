@@ -322,6 +322,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
         final AtomicInteger totalScannedCount = new AtomicInteger(0);
         final ExpectedSizeIterator epResultItr = new ExpectedSizeIterator(scanRequests.size() * shardNum);
         final AtomicInteger atomicInteger = new AtomicInteger(0);
+        final String storageResultDumpPath = BackdoorToggles.getStorageResultDump();//usually it's null
 
         for (final Pair<byte[], byte[]> epRange : getEPKeyRanges(cuboidBaseShard, shardNum, totalShards)) {
             executorService.submit(new Runnable() {
@@ -358,7 +359,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                                     int order = atomicInteger.incrementAndGet();
                                     byte[] compressed = HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows());
                                     logger.info("Checking BackdoorToggles.getStorageResultDump()");
-                                    if (BackdoorToggles.getStorageResultDump() != null) {
+                                    if (storageResultDumpPath != null) {
                                         try {
                                             FileUtils.writeByteArrayToFile(new File(BackdoorToggles.getStorageResultDump() + "/" + order), compressed);
                                             logger.info("write to file for part " + order + " finished");
