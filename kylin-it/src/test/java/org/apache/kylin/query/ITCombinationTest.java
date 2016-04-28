@@ -74,8 +74,9 @@ public class ITCombinationTest extends ITKylinQueryTest {
             // unset
         }
 
-        if ("v1".equalsIgnoreCase(queryEngine)) {
+        if ("v1".equalsIgnoreCase(queryEngine))
             HBaseStorage.overwriteStorageQuery = HBaseStorage.v1CubeStorageQuery;
-        }
+        else
+            HBaseStorage.overwriteStorageQuery = null;
     }
 }
