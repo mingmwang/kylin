@@ -79,7 +79,7 @@ public class FunctionDesc {
         ArrayList<TblColRef> colRefs = Lists.newArrayList();
         for (ParameterDesc p = parameter; p != null; p = p.getNextParameter()) {
             if (p.isColumnType()) {
-                ColumnDesc sourceColumn = findColumn(factTable,lookupTables,p.getValue());
+                ColumnDesc sourceColumn = findColumn(factTable, lookupTables, p.getValue());
                 TblColRef colRef = new TblColRef(sourceColumn);
                 colRefs.add(colRef);
             }
