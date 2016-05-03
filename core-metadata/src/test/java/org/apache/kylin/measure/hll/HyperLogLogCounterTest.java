@@ -18,6 +18,7 @@
 
 package org.apache.kylin.measure.hll;
 
+import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 
 import java.io.IOException;
