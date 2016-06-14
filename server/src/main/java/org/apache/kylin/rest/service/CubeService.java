@@ -28,6 +28,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.WeakHashMap;
 
+import javax.annotation.Nullable;
+
+import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.hbase.client.HTable;
 import org.apache.kylin.common.KylinConfig;
@@ -73,6 +76,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
+import com.google.common.base.Function;
+import com.google.common.collect.Collections2;
 import com.google.common.collect.Lists;
 
 /**
@@ -586,6 +591,7 @@ public class CubeService extends BasicService {
     }
 
     private void keepCubeRetention(String cubeName) {
+        logger.debug("on keepCubeRetention: " + cubeName);
         CubeInstance cube = getCubeManager().getCube(cubeName);
         CubeDesc desc = cube.getDescriptor();
         if (desc.getRetentionRange() > 0) {
@@ -611,6 +617,13 @@ public class CubeService extends BasicService {
                 if (toRemoveSegs.size() > 0) {
                     CubeUpdate cubeBuilder = new CubeUpdate(cube);
                     cubeBuilder.setToRemoveSegs(toRemoveSegs.toArray(new CubeSegment[toRemoveSegs.size()]));
+                    logger.debug("KeepCubeRetention, cube: " + cubeName + " has " + toRemoveSegs.size() + " to be removed segments:" + StringUtils.join(Collections2.transform(toRemoveSegs, new Function<CubeSegment, String>() {
+                        @Nullable
+                        @Override
+                        public String apply(CubeSegment input) {
+                            return input.getStorageLocationIdentifier();
+                        }
+                    }), ","));
                     try {
                         this.getCubeManager().updateCube(cubeBuilder);
                     } catch (IOException e) {
@@ -623,6 +636,7 @@ public class CubeService extends BasicService {
     }
 
     private void mergeCubeSegment(String cubeName) {
+        logger.debug("on mergeCubeSegment: " + cubeName);
         CubeInstance cube = getCubeManager().getCube(cubeName);
         if (cube.needAutoMerge()) {
             synchronized (CubeService.class) {

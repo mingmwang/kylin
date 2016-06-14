@@ -355,20 +355,23 @@ public class CubeManager implements IRealizationProvider {
         if (update.getCost() > 0) {
             cube.setCost(update.getCost());
         }
-
-        try {
-            getStore().putResource(cube.getResourcePath(), cube, CUBE_SERIALIZER);
-        } catch (IllegalStateException ise) {
-            logger.warn("Write conflict to update cube " + cube.getName() + " at try " + retry + ", will retry...");
-            if (retry >= 7) {
-                logger.error("Retried 7 times till got error, abandoning...", ise);
-                throw ise;
+        
+        synchronized(cube){
+            try {
+                getStore().putResource(cube.getResourcePath(), cube, CUBE_SERIALIZER);
+            } catch (IllegalStateException ise) {
+                logger.warn("Write conflict to update cube " + cube.getName() + " at try " + retry + ", will retry...");
+                if (retry >= 7) {
+                    logger.error("Retried 7 times till got error, abandoning...", ise);
+                    throw ise;
+                }
+    
+                cube = reloadCubeLocal(cube.getName());
+                update.setCubeInstance(cube);
+                retry++;
+                cube = updateCubeWithRetry(update, retry);
             }
-
-            cube = reloadCubeLocal(cube.getName());
-            update.setCubeInstance(cube);
-            retry++;
-            cube = updateCubeWithRetry(update, retry);
+            cubeMap.put(cube.getName(), cube);
         }
 
         if (toRemoveResources.size() > 0) {
@@ -380,8 +383,6 @@ public class CubeManager implements IRealizationProvider {
                 }
             }
         }
-
-        cubeMap.put(cube.getName(), cube);
 
         //this is a duplicate call to take care of scenarios where REST cache service unavailable
         ProjectManager.getInstance(KylinConfig.getInstanceFromEnv()).clearL2Cache();
@@ -479,7 +480,7 @@ public class CubeManager implements IRealizationProvider {
         }
 
         validateNewSegments(cube, false, newSegment);
-
+        logger.debug("MergeSegments, cube: " + cube.getName() + " has to be add segment: " + newSegment.getStorageLocationIdentifier());
         CubeUpdate cubeBuilder = new CubeUpdate(cube);
         cubeBuilder.setToAddSegs(newSegment);
         updateCube(cubeBuilder);
@@ -834,7 +835,7 @@ public class CubeManager implements IRealizationProvider {
                 usedStorageLocation.put(cubeName.toUpperCase(), segment.getStorageLocationIdentifier());
             }
 
-            logger.debug("Reloaded new cube: " + cubeName + " with reference being" + cubeInstance + " having " + cubeInstance.getSegments().size() + " segments:" + StringUtils.join(Collections2.transform(cubeInstance.getSegments(), new Function<CubeSegment, String>() {
+            logger.debug("Reloaded new cube: " + cubeName + " with reference being " + cubeInstance + " having " + cubeInstance.getSegments().size() + " segments:" + StringUtils.join(Collections2.transform(cubeInstance.getSegments(), new Function<CubeSegment, String>() {
                 @Nullable
                 @Override
                 public String apply(CubeSegment input) {
