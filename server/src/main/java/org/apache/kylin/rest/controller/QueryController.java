@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.sql.SQLException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicLong;
 
 import javax.annotation.PostConstruct;
 import javax.servlet.http.HttpServletResponse;
@@ -64,6 +66,7 @@ import org.supercsv.io.ICsvListWriter;
 import org.supercsv.prefs.CsvPreference;
 
 import com.google.common.base.Preconditions;
+import com.google.common.collect.Maps;
 
 /**
  * Handle query requests.
@@ -76,6 +79,8 @@ public class QueryController extends BasicController {
     private static final Logger logger = LoggerFactory.getLogger(QueryController.class);
 
     public static final String EXCEPTION_QUERY_CACHE = "ExceptionQueryCache";
+    
+    private ConcurrentMap<String, AtomicLong> pendingRequests = Maps.newConcurrentMap();
 
     @Autowired
     private QueryService queryService;
@@ -184,15 +189,26 @@ public class QueryController extends BasicController {
                 logger.debug("Directly return exception as not supported");
                 throw new InternalErrorException("Not Supported SQL.");
             }
-
+            
+            AtomicLong pendingQueries = pendingRequests.get(project);
+            if(pendingQueries == null){
+                pendingQueries = pendingRequests.putIfAbsent(project, new AtomicLong(1));
+            }
+            if(pendingQueries != null){
+                if(pendingQueries.get() < KylinConfig.getInstanceFromEnv().getQueryPendingRequestForProject()){
+                    pendingQueries.incrementAndGet();
+                }else{
+                    logger.warn("Directly return exception as too many pending query requests for project:" + project);
+                    throw new InternalErrorException("Too many pending query requests for project:" + project);
+                }
+            }
+            
             SQLResponse sqlResponse = searchQueryInCache(sqlRequest);
             try {
                 if (null == sqlResponse) {
                     sqlResponse = queryService.query(sqlRequest);
                 }
-
                 checkQueryAuth(sqlResponse);
-
             } catch (Throwable e) { // calcite may throw AssertError
                 logger.error("Exception when execute sql", e);
                 String errMsg = QueryUtil.makeErrorMsgUserFriendly(e);
@@ -204,6 +220,8 @@ public class QueryController extends BasicController {
                     Cache exceptionCache = cacheManager.getCache(EXCEPTION_QUERY_CACHE);
                     exceptionCache.put(new Element(sqlRequest, sqlResponse));
                 }
+            }finally{
+                pendingRequests.get(project).decrementAndGet();
             }
 
             queryService.logQuery(sqlRequest, sqlResponse);

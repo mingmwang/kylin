@@ -419,6 +419,10 @@ public class KylinConfigBase implements Serializable {
     public Long getQueryDurationCacheThreshold() {
         return Long.parseLong(this.getOptional("kylin.query.cache.threshold.duration", String.valueOf(2000)));
     }
+    
+    public int getQueryPendingRequestForProject() {
+        return Integer.parseInt(getOptional("kylin.query.project.pending", "10"));
+    }
 
     public Long getQueryScanCountCacheThreshold() {
         return Long.parseLong(this.getOptional("kylin.query.cache.threshold.scancount", String.valueOf(10 * 1024)));
