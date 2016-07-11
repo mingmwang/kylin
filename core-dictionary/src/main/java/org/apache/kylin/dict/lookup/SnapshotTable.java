@@ -159,6 +159,9 @@ public class SnapshotTable extends RootPersistentEntity implements ReadableTable
             return false;
         SnapshotTable that = (SnapshotTable) o;
 
+        if (this.dict.equals(that.dict) == false)
+            return false;
+
         //compare row by row
         if (this.rowIndices.size() != that.rowIndices.size())
             return false;
@@ -166,6 +169,7 @@ public class SnapshotTable extends RootPersistentEntity implements ReadableTable
             if (!ArrayUtils.isEquals(this.rowIndices.get(i), that.rowIndices.get(i)))
                 return false;
         }
+
         return true;
     }
 
@@ -248,6 +252,9 @@ public class SnapshotTable extends RootPersistentEntity implements ReadableTable
                     this.rowIndices.add(rowIndex);
                 }
             }
+        }else{
+            rowIndices = new ArrayList<int[]>();
+            dict = new TrieDictionary<String>();
         }
     }
 

@@ -18,12 +18,15 @@
 
 package org.apache.kylin.metadata.filter;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Stack;
 
 import org.apache.kylin.common.util.BytesUtil;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * http://eli.thegreenplace.net/2011/09/29/an-interesting-tree-serialization-algorithm-from-dwarf
@@ -33,11 +36,14 @@ import org.apache.kylin.common.util.BytesUtil;
  */
 public class TupleFilterSerializer {
 
+    private static final Logger logger = LoggerFactory.getLogger(TupleFilterSerializer.class);
+
     public interface Decorator {
         TupleFilter onSerialize(TupleFilter filter);
     }
 
     private static final int BUFFER_SIZE = 65536;
+    private static final int BUFFER_SIZE_MAX = 268435456;
     private static final Map<Integer, TupleFilter.FilterOperatorEnum> ID_OP_MAP = new HashMap<Integer, TupleFilter.FilterOperatorEnum>();
 
     static {
@@ -51,8 +57,22 @@ public class TupleFilterSerializer {
     }
 
     public static byte[] serialize(TupleFilter rootFilter, Decorator decorator, IFilterCodeSystem<?> cs) {
-        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        internalSerialize(rootFilter, decorator, buffer, cs);
+        ByteBuffer buffer;
+        int bufferSize = BUFFER_SIZE;
+        while (true) {
+            try {
+                buffer = ByteBuffer.allocate(bufferSize);
+                internalSerialize(rootFilter, decorator, buffer, cs);
+                break;
+            } catch (BufferOverflowException e) {
+                logger.info("Buffer size {} cannot hold the filter, resizing to 4 times", bufferSize);
+                bufferSize *= 4;
+                if(bufferSize > BUFFER_SIZE_MAX){
+                    logger.error("Buffer size {} exceeds the limitation {}", bufferSize, BUFFER_SIZE_MAX);
+                    throw e;
+                }
+            }
+        }
         byte[] result = new byte[buffer.position()];
         System.arraycopy(buffer.array(), 0, result, 0, buffer.position());
         return result;

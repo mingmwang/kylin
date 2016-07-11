@@ -18,6 +18,7 @@
 
 package org.apache.kylin.metadata.filter;
 
+import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Collections;
@@ -25,6 +26,8 @@ import java.util.HashSet;
 
 import org.apache.kylin.common.util.BytesUtil;
 import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * 
@@ -32,6 +35,8 @@ import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
  * 
  */
 public class ConstantTupleFilter extends TupleFilter {
+
+    private static final Logger logger = LoggerFactory.getLogger(ConstantTupleFilter.class);
 
     public static final ConstantTupleFilter FALSE = new ConstantTupleFilter();
     public static final ConstantTupleFilter TRUE = new ConstantTupleFilter((Object) null); // not sure of underlying code system, null is the only value that applies to all types
@@ -89,11 +94,21 @@ public class ConstantTupleFilter extends TupleFilter {
     @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public byte[] serialize(IFilterCodeSystem cs) {
-        ByteBuffer buffer = ByteBuffer.allocate(BUFFER_SIZE);
-        int size = this.constantValues.size();
-        BytesUtil.writeVInt(size, buffer);
-        for (Object val : this.constantValues) {
-            cs.serialize(val, buffer);
+        ByteBuffer buffer;
+        int bufferSize = BUFFER_SIZE;
+        while(true){
+            try{
+                buffer = ByteBuffer.allocate(bufferSize);
+                int size = this.constantValues.size();
+                BytesUtil.writeVInt(size, buffer);
+                for (Object val : this.constantValues) {
+                    cs.serialize(val, buffer);
+                }
+                break;
+            }catch (BufferOverflowException e) {
+                logger.info("Buffer size {} cannot hold the filter, resizing to 4 times", bufferSize);
+                bufferSize *= 4;
+            }
         }
         byte[] result = new byte[buffer.position()];
         System.arraycopy(buffer.array(), 0, result, 0, buffer.position());

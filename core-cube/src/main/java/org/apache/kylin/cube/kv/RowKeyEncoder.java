@@ -89,7 +89,8 @@ public class RowKeyEncoder extends AbstractRowKeyEncoder {
 
     @Override
     public void encode(ByteArray bodyBytes, ByteArray outputBuf) {
-        Preconditions.checkState(bodyBytes.length() == bodyLength);
+        Preconditions.checkState(bodyBytes.length() == bodyLength,//
+                "bodybytes length: " + bodyBytes.length() + " merged body length: " + bodyLength);
         Preconditions.checkState(bodyBytes.length() + getHeaderLength() == outputBuf.length(),//
                 "bodybytes length: " + bodyBytes.length() + " outputBuf length: " + outputBuf.length() + " header length: " + getHeaderLength());
         System.arraycopy(bodyBytes.array(), bodyBytes.offset(), outputBuf.array(), getHeaderLength(), bodyLength);

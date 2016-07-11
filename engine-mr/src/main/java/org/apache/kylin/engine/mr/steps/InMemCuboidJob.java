@@ -106,8 +106,8 @@ public class InMemCuboidJob extends AbstractHadoopJob {
             // set job configuration
             job.getConfiguration().set(BatchConstants.CFG_CUBE_NAME, cubeName);
             job.getConfiguration().set(BatchConstants.CFG_CUBE_SEGMENT_NAME, segmentName);
-            long timeout = 1000 * 60 * 60L; // 1 hour
-            job.getConfiguration().set("mapred.task.timeout", String.valueOf(timeout));
+//            long timeout = 1000 * 60 * 60L; // 1 hour
+//            job.getConfiguration().set("mapred.task.timeout", String.valueOf(timeout));
 
             // set input
             IMRTableInputFormat flatTableInputFormat = MRUtil.getBatchCubingInputSide(cubeSeg).getFlatTableInputFormat();

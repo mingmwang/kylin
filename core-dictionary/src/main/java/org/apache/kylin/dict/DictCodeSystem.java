@@ -22,6 +22,8 @@ import java.nio.ByteBuffer;
 
 import org.apache.kylin.common.util.BytesUtil;
 import org.apache.kylin.metadata.filter.IFilterCodeSystem;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * A simple code system where all values are dictionary IDs (fixed length bytes) encoded as ISO-8859-1 strings.
@@ -29,6 +31,8 @@ import org.apache.kylin.metadata.filter.IFilterCodeSystem;
  * @author yangli9
  */
 public class DictCodeSystem implements IFilterCodeSystem<String> {
+
+    private static final Logger logger = LoggerFactory.getLogger(DictCodeSystem.class);
 
     public static final DictCodeSystem INSTANCE = new DictCodeSystem();
 
@@ -57,6 +61,9 @@ public class DictCodeSystem implements IFilterCodeSystem<String> {
     //TODO: should use ISO-8859-1 rather than UTF8
     @Override
     public void serialize(String value, ByteBuffer buffer) {
+        if(value.length() > 1000 ){
+            logger.info("value length exceeds 1000: {}", value.substring(0,1000));
+        }
         BytesUtil.writeUTFString(value, buffer);
     }
 
