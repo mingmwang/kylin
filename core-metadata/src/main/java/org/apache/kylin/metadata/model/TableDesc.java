@@ -163,6 +163,23 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
             }
         }
     }
+    
+    @Override
+    public int hashCode() {
+        return getIdentity().hashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (!super.equals(obj))
+            return false;
+        if (getClass() != obj.getClass())
+            return false;
+        TableDesc other = (TableDesc) obj;
+        return getIdentity().equals(other.getIdentity());
+    }
 
     @Override
     public String toString() {
@@ -179,5 +196,9 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
     @Override
     public int getSourceType() {
         return sourceType;
+    }
+
+    public void setSourceType(int sourceType) {
+        this.sourceType = sourceType;
     }
 }

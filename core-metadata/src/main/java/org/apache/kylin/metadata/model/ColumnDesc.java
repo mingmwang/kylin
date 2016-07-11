@@ -18,13 +18,13 @@
 
 package org.apache.kylin.metadata.model;
 
+import java.io.Serializable;
+
 import org.apache.commons.lang.StringUtils;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.JsonProperty;
-
-import java.io.Serializable;
 
 /**
  * Column Metadata from Source. All name should be uppercase.
@@ -143,6 +143,37 @@ public class ColumnDesc implements Serializable {
     public boolean isSameAs(String tableName, String columnName) {
         return StringUtils.equalsIgnoreCase(table.getIdentity(), tableName) && //
                 StringUtils.equalsIgnoreCase(name, columnName);
+    }
+    
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((name == null) ? 0 : name.hashCode());
+        result = prime * result + ((table == null) ? 0 : table.hashCode());
+        return result;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+        if (this == obj)
+            return true;
+        if (obj == null)
+            return false;
+        if (getClass() != obj.getClass())
+            return false;
+        ColumnDesc other = (ColumnDesc) obj;
+        if (name == null) {
+            if (other.name != null)
+                return false;
+        } else if (!name.equals(other.name))
+            return false;
+        if (table == null) {
+            if (other.table != null)
+                return false;
+        } else if (!table.equals(other.table))
+            return false;
+        return true;
     }
 
     @Override
