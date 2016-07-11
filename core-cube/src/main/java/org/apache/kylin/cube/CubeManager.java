@@ -356,6 +356,7 @@ public class CubeManager implements IRealizationProvider {
             cube.setCost(update.getCost());
         }
         
+        CubeInstance _cube = null;
         synchronized(cube){
             try {
                 getStore().putResource(cube.getResourcePath(), cube, CUBE_SERIALIZER);
@@ -366,12 +367,15 @@ public class CubeManager implements IRealizationProvider {
                     throw ise;
                 }
     
-                cube = reloadCubeLocal(cube.getName());
-                update.setCubeInstance(cube);
+                update.setCubeInstance(reloadCubeLocal(cube.getName()));
                 retry++;
-                cube = updateCubeWithRetry(update, retry);
+                _cube = updateCubeWithRetry(update, retry);
             }
-            cubeMap.put(cube.getName(), cube);
+            if(_cube != null){
+                cube = _cube;
+            }else{
+                cubeMap.put(cube.getName(), cube);
+            }
         }
 
         if (toRemoveResources.size() > 0) {
