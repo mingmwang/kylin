@@ -397,7 +397,7 @@ public class CubeController extends BasicController {
         if (null == cube) {
             throw new NotFoundException("Cube with name " + cubeName + " not found..");
         }
-
+        
         //drop related StreamingConfig KafkaConfig if exist
         try {
             List<StreamingConfig> configs = streamingService.listAllStreamingConfigs(cubeName);
@@ -418,14 +418,17 @@ public class CubeController extends BasicController {
         } catch (IOException e) {
             e.printStackTrace();
         }
-
-        //drop Cube
-        try {
-            cubeService.deleteCube(cube);
-        } catch (Exception e) {
-            logger.error(e.getLocalizedMessage(), e);
-            throw new InternalErrorException("Failed to delete cube. " + " Caused by: " + e.getMessage(), e);
+        logger.info("Start to delete cube, cube name:" + cubeName);
+        synchronized(this){
+            //drop Cube
+            try {
+                cubeService.deleteCube(cube);
+            } catch (Exception e) {
+                logger.error(e.getLocalizedMessage(), e);
+                throw new InternalErrorException("Failed to delete cube. " + " Caused by: " + e.getMessage(), e);
+            }
         }
+        logger.info("Cube deleted, cube name:" + cubeName);
 
     }
 

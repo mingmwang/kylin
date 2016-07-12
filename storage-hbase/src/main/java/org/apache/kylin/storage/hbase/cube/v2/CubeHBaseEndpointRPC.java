@@ -27,6 +27,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.DataFormatException;
@@ -63,6 +64,7 @@ import org.slf4j.LoggerFactory;
 import com.google.common.base.Function;
 import com.google.common.collect.Iterators;
 import com.google.common.collect.Lists;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.protobuf.ByteString;
 import com.google.protobuf.HBaseZeroCopyByteString;
 
@@ -70,7 +72,13 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
     public static final Logger logger = LoggerFactory.getLogger(CubeHBaseEndpointRPC.class);
 
-    private static ExecutorService executorService = Executors.newCachedThreadPool();
+    private static ThreadFactory customThreadfactory = new ThreadFactoryBuilder().setNameFormat("CubeHBaseEndpointRPC-Thread").setDaemon(false).setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+        @Override
+        public void uncaughtException(Thread t, Throwable e) {
+            logger.error("Caught exception in thread " + t.getName() + ": ", e);
+        }
+        }).build();
+    private static ExecutorService executorService = Executors.newCachedThreadPool(customThreadfactory);
 
     static class ExpectedSizeIterator implements Iterator<byte[]> {
 
@@ -305,11 +313,13 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
     }
 
-    private Map<byte[], CubeVisitProtos.CubeVisitResponse> getResults(final CubeVisitProtos.CubeVisitRequest request, HTableInterface table, byte[] startKey, byte[] endKey) throws Throwable {
+    private Map<byte[], CubeVisitProtos.CubeVisitResponse> getResults(final CubeVisitProtos.CubeVisitRequest request, final HTableInterface table, byte[] startKey, byte[] endKey) throws Throwable {
+        logger.info("Invoker Hbase CubeVisitService on Table:" + table.getName());
         Map<byte[], CubeVisitProtos.CubeVisitResponse> results = table.coprocessorService(CubeVisitProtos.CubeVisitService.class, startKey, endKey, new Batch.Call<CubeVisitProtos.CubeVisitService, CubeVisitProtos.CubeVisitResponse>() {
             public CubeVisitProtos.CubeVisitResponse call(CubeVisitProtos.CubeVisitService rowsService) throws IOException {
                 ServerRpcController controller = new ServerRpcController();
                 BlockingRpcCallback<CubeVisitProtos.CubeVisitResponse> rpcCallback = new BlockingRpcCallback<>();
+                logger.info("Submit Hbase RPC on Table:" + table.getName());
                 rowsService.visitCube(controller, request, rpcCallback);
                 CubeVisitProtos.CubeVisitResponse response = rpcCallback.get();
                 if (controller.failedOnException()) {
