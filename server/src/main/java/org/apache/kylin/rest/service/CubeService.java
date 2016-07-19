@@ -284,15 +284,16 @@ public class CubeService extends BasicService {
     }
 
     @PreAuthorize(Constant.ACCESS_HAS_ROLE_ADMIN + " or hasPermission(#cube, 'ADMINISTRATION') or hasPermission(#cube, 'MANAGEMENT')")
-    public void deleteCube(CubeInstance cube) throws IOException, JobException {
+    public synchronized void deleteCube(CubeInstance cube) throws IOException, JobException {
+        logger.info("Start to delete cube, cube name:" + cube.getName());
         final List<CubingJob> cubingJobs = listAllCubingJobs(cube.getName(), null, EnumSet.of(ExecutableState.READY, ExecutableState.RUNNING));
         if (!cubingJobs.isEmpty()) {
             throw new JobException("The cube " + cube.getName() + " has running job, please discard it and try again.");
         }
-
         this.releaseAllSegments(cube);
         getCubeManager().dropCube(cube.getName(), true);
         accessService.clean(cube, true);
+        logger.info("Cube deleted, cube name:" + cube.getName());
     }
 
     public boolean isCubeDescEditable(CubeDesc cd) {

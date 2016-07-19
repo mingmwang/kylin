@@ -36,6 +36,8 @@ import org.apache.commons.io.IOUtils;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.debug.BackdoorToggles;
 import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.metadata.query.QueryManager;
+import org.apache.kylin.metadata.query.RunningQuery;
 import org.apache.kylin.rest.constant.Constant;
 import org.apache.kylin.rest.exception.InternalErrorException;
 import org.apache.kylin.rest.model.Query;
@@ -169,6 +171,20 @@ public class QueryController extends BasicController {
             logger.error(e.getLocalizedMessage(), e);
             throw new InternalErrorException(e.getLocalizedMessage(), e);
         }
+    }
+
+    @RequestMapping(value = "/query/runningQueries", method = RequestMethod.GET)
+    @ResponseBody
+    public List<RunningQuery> getRunningQueries() {
+        return QueryManager.getInstance().getAllRunningQueries();
+    }
+
+    @RequestMapping(value = "/query/{queryId}/stop", method = RequestMethod.PUT)
+    @ResponseBody
+    public void stopQuery(@PathVariable String queryId) {
+        final String user = SecurityContextHolder.getContext().getAuthentication().getName();
+        logger.info("{} stop the query: {}", new Object[]{user,queryId});
+        QueryManager.getInstance().stopQuery(queryId, "stopped by " + user);
     }
 
     private SQLResponse doQueryWithCache(SQLRequest sqlRequest) {

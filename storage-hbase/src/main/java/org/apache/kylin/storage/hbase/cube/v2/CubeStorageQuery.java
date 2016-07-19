@@ -42,6 +42,7 @@ import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.SegmentStatusEnum;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.query.QueryManager;
 import org.apache.kylin.metadata.realization.SQLDigest;
 import org.apache.kylin.metadata.tuple.ITupleIterator;
 import org.apache.kylin.storage.ICachableStorageQuery;
@@ -69,6 +70,7 @@ public class CubeStorageQuery implements ICachableStorageQuery {
 
     @Override
     public ITupleIterator search(StorageContext context, SQLDigest sqlDigest, TupleInfo returnTupleInfo) {
+        QueryManager.getInstance().getCurrentRunningQuery().startCubePlan();
         // check whether this is a TopN query
         checkAndRewriteTopN(sqlDigest);
 
@@ -126,7 +128,7 @@ public class CubeStorageQuery implements ICachableStorageQuery {
             }
             scanners.add(scanner);
         }
-
+        QueryManager.getInstance().getCurrentRunningQuery().finishCubePlan();
         if (scanners.isEmpty())
             return ITupleIterator.EMPTY_TUPLE_ITERATOR;
 

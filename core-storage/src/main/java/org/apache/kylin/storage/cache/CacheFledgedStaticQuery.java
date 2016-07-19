@@ -22,6 +22,9 @@ import java.util.List;
 
 import net.sf.ehcache.Element;
 
+import org.apache.kylin.metadata.query.QueryManager;
+import org.apache.kylin.metadata.query.QueryStep;
+import org.apache.kylin.metadata.query.RunningQuery;
 import org.apache.kylin.metadata.realization.SQLDigest;
 import org.apache.kylin.metadata.realization.StreamSQLDigest;
 import org.apache.kylin.metadata.tuple.ITuple;
@@ -45,17 +48,21 @@ public class CacheFledgedStaticQuery extends AbstractCacheFledgedQuery {
 
     @Override
     public ITupleIterator search(final StorageContext context, final SQLDigest sqlDigest, final TupleInfo returnTupleInfo) {
-
+        RunningQuery currQuery = QueryManager.getInstance().getCurrentRunningQuery();
+        QueryStep cacheStep = currQuery.startStep("query_cache");
         streamSQLDigest = new StreamSQLDigest(sqlDigest, null);
         StreamSQLResult cachedResult = getStreamSQLResult(streamSQLDigest);
+        currQuery.finishStep("query_cache");
         ITupleIterator ret;
 
         if (cachedResult != null) {
             logger.info("using existing cache");
+            cacheStep.addAttribute("cache_hit", Boolean.TRUE.toString());
             context.setReusedPeriod(Ranges.<Long> all());
             return new SimpleTupleIterator(cachedResult.reuse(Ranges.<Long> all()));
         } else {
             logger.info("no existing cache to use");
+            cacheStep.addAttribute("cache_hit", Boolean.FALSE.toString());
             ret = underlyingStorage.search(context, sqlDigest, returnTupleInfo);
 
             //use another nested ITupleIterator to deal with cache

@@ -40,6 +40,7 @@ import org.apache.hadoop.hbase.client.HTableInterface;
 import org.apache.hadoop.hbase.client.coprocessor.Batch;
 import org.apache.hadoop.hbase.ipc.BlockingRpcCallback;
 import org.apache.hadoop.hbase.ipc.ServerRpcController;
+import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.debug.BackdoorToggles;
 import org.apache.kylin.common.util.Bytes;
 import org.apache.kylin.common.util.BytesSerializer;
@@ -53,6 +54,9 @@ import org.apache.kylin.gridtable.GTInfo;
 import org.apache.kylin.gridtable.GTRecord;
 import org.apache.kylin.gridtable.GTScanRequest;
 import org.apache.kylin.gridtable.IGTScanner;
+import org.apache.kylin.metadata.query.QueryManager;
+import org.apache.kylin.metadata.query.QueryStep;
+import org.apache.kylin.metadata.query.RunningQuery;
 import org.apache.kylin.storage.hbase.HBaseConnection;
 import org.apache.kylin.storage.hbase.common.coprocessor.CoprocessorBehavior;
 import org.apache.kylin.storage.hbase.cube.v2.coprocessor.endpoint.generated.CubeVisitProtos;
@@ -85,9 +89,12 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
         int expectedSize;
         int current = 0;
         BlockingQueue<byte[]> queue;
+        RunningQuery runningQuery;
 
-        public ExpectedSizeIterator(int expectedSize) {
+
+        public ExpectedSizeIterator(RunningQuery runningQuery, int expectedSize) {
             this.expectedSize = expectedSize;
+            this.runningQuery = runningQuery;
             this.queue = new ArrayBlockingQueue<byte[]>(expectedSize);
         }
 
@@ -101,6 +108,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
             if (current >= expectedSize) {
                 throw new IllegalStateException("Won't have more data");
             }
+            checkQueryState();
             try {
                 current++;
                 return queue.poll(1, TimeUnit.HOURS);
@@ -116,9 +124,16 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
         public void append(byte[] data) {
             try {
+                checkQueryState();
                 queue.put(data);
             } catch (InterruptedException e) {
                 throw new RuntimeException("error when waiting queue", e);
+            }
+        }
+
+        private void checkQueryState() {
+            if (runningQuery.isStopped()) {
+                throw new IllegalStateException("the query is stopped: " + runningQuery.getStopReason());
             }
         }
     }
@@ -256,11 +271,26 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                 scanLogged = true;
             }
         }
+        
+        final RunningQuery query = QueryManager.getInstance().getCurrentRunningQuery();
+        final QueryStep segmentQueryStep = query.startStep("segment_query");
+        segmentQueryStep.addAttribute("segment", cubeSeg.getName());
+        segmentQueryStep.addAttribute("htable", cubeSeg.getStorageLocationIdentifier());
 
-        logger.debug("Submitting rpc to {} shards starting from shard {}, scan requests count {}", new Object[] { shardNum, cuboidBaseShard, scanRequests.size() });
-
+        query.addQueryStopListener(new RunningQuery.QueryStopListener() {
+            @Override
+            public void stop(RunningQuery query) {
+                // first interrupt the query thread
+                if (segmentQueryStep.isRunning()) {
+                    segmentQueryStep.getExecThread().interrupt();
+                }
+            }
+        });
+        logger.debug("Submitting rpc to {} shards starting from shard {}, scan requests count {}, query id {}", new Object[] { shardNum, cuboidBaseShard, scanRequests.size(), query.getQueryId()});
         final AtomicInteger totalScannedCount = new AtomicInteger(0);
-        final ExpectedSizeIterator epResultItr = new ExpectedSizeIterator(scanRequests.size() * shardNum);
+        final AtomicInteger totalResponseCount = new AtomicInteger(0);
+        final int expectedSize = scanRequests.size() * shardNum;
+        final ExpectedSizeIterator epResultItr = new ExpectedSizeIterator(query, expectedSize);
 
         for (final Pair<byte[], byte[]> epRange : getEPKeyRanges(cuboidBaseShard, shardNum, totalShards)) {
             logger.debug("Submitting rpc request.");
@@ -268,7 +298,10 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                 @Override
                 public void run() {
                     logger.debug("Rpc request running.");
+                    QueryStep epRangeStep = segmentQueryStep.startStep("endpoint_range_request");
+                    epRangeStep.addAttribute("ep_range", BytesUtil.toHex(epRange.getFirst()) + "-" + BytesUtil.toHex(epRange.getSecond()));
                     for (int i = 0; i < scanRequests.size(); ++i) {
+                        QueryStep coprocessorRequestStep = epRangeStep.startStep("coprocessor_request:" + i);
                         int scanIndex = i;
                         logger.debug("Rpc scanRequests.");
                         try{
@@ -282,22 +315,29 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
     
                             Map<byte[], CubeVisitProtos.CubeVisitResponse> results;
                             try {
-                                results = getResults(builder.build(), conn.getTable(cubeSeg.getStorageLocationIdentifier()), epRange.getFirst(), epRange.getSecond());
+                                results = getResults(query, coprocessorRequestStep, builder.build(), conn.getTable(cubeSeg.getStorageLocationIdentifier()), epRange.getFirst(), epRange.getSecond());
                             } catch (Throwable throwable) {
                                 throw new RuntimeException("Error when visiting cubes by endpoint:", throwable);
                             }
     
                             for (Map.Entry<byte[], CubeVisitProtos.CubeVisitResponse> result : results.entrySet()) {
                                 totalScannedCount.addAndGet(result.getValue().getStats().getScannedRowCount());
-                                logger.info(getStatsString(result));
+                                totalResponseCount.incrementAndGet();
+                                logger.info(getStatsString(result, query));
                                 try {
                                     epResultItr.append(CompressionUtils.decompress(HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows())));
                                 } catch (IOException | DataFormatException e) {
                                     throw new RuntimeException("Error when decompressing", e);
                                 }
                             }
+                            
+                            epRangeStep.finishStep(coprocessorRequestStep);
                         }catch(Throwable t){
                             logger.error("Unexptectd error in Rpc request", t);
+                        }
+                        segmentQueryStep.finishStep(epRangeStep);
+                        if (totalResponseCount.get() == expectedSize) {
+                            query.finishStep(segmentQueryStep);
                         }
                     }
                 }
@@ -307,9 +347,10 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
         return new EndpointResultsAsGTScanner(fullGTInfo, epResultItr, scanRequests.get(0).getColumns(), totalScannedCount.get());
     }
 
-    private String getStatsString(Map.Entry<byte[], CubeVisitProtos.CubeVisitResponse> result) {
+    private String getStatsString(Map.Entry<byte[], CubeVisitProtos.CubeVisitResponse> result, RunningQuery query) {
         StringBuilder sb = new StringBuilder();
         Stats stats = result.getValue().getStats();
+        sb.append("Query ID: " + query.getQueryId() + ". ");
         sb.append("Endpoint RPC returned from HTable " + cubeSeg.getStorageLocationIdentifier() + " Shard " + BytesUtil.toHex(result.getKey()) + " on host: " + stats.getHostname() + ".");
         sb.append("Total scanned row: " + stats.getScannedRowCount() + ". ");
         sb.append("Total filtered/aggred row: " + stats.getAggregatedRowCount() + ". ");
@@ -320,10 +361,12 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
     }
 
-    private Map<byte[], CubeVisitProtos.CubeVisitResponse> getResults(final CubeVisitProtos.CubeVisitRequest request, final HTableInterface table, byte[] startKey, byte[] endKey) throws Throwable {
+    private Map<byte[], CubeVisitProtos.CubeVisitResponse> getResults(final RunningQuery query, final QueryStep coprocessorRequestStep, final CubeVisitProtos.CubeVisitRequest request, final HTableInterface table, byte[] startKey, byte[] endKey) throws Throwable {
+        final int limitCount = getConfigLimit();
         logger.info("Invoker Hbase CubeVisitService on Table:" + table.getName());
         Map<byte[], CubeVisitProtos.CubeVisitResponse> results = table.coprocessorService(CubeVisitProtos.CubeVisitService.class, startKey, endKey, new Batch.Call<CubeVisitProtos.CubeVisitService, CubeVisitProtos.CubeVisitResponse>() {
             public CubeVisitProtos.CubeVisitResponse call(CubeVisitProtos.CubeVisitService rowsService) throws IOException {
+                QueryStep regionRPCStep = coprocessorRequestStep.startStep("region_server_rpc");
                 ServerRpcController controller = new ServerRpcController();
                 BlockingRpcCallback<CubeVisitProtos.CubeVisitResponse> rpcCallback = new BlockingRpcCallback<>();
                 logger.info("Submit Hbase RPC on Table:" + table.getName());
@@ -332,10 +375,29 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
                 if (controller.failedOnException()) {
                     throw controller.getFailedOn();
                 }
+
+                int totalIncomingRecords = query.incAndGetIncomingRecords(getIncomingRecordSize(response));
+
+                if (totalIncomingRecords >= limitCount) {
+                    logger.warn("the query result size {} is too large to return, stop the query", totalIncomingRecords);
+                    query.stop("Scan row count exceeded, please add filter condition to narrow down backend scan range, like where clause.");
+                    throw new RuntimeException("the query is stopped because of too large result");
+                }
+                coprocessorRequestStep.finishStep(regionRPCStep);
                 return response;
             }
         });
 
         return results;
+    }
+
+    private int getConfigLimit() {
+        KylinConfig config = KylinConfig.getInstanceFromEnv();
+        return config.getScanThreshold();
+    }
+
+    private int getIncomingRecordSize(CubeVisitProtos.CubeVisitResponse response) {
+        Stats stats = response.getStats();
+        return stats.getScannedRowCount() - stats.getAggregatedRowCount();
     }
 }

@@ -37,6 +37,7 @@ import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterImpl;
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlExplainLevel;
+import org.apache.kylin.metadata.query.QueryManager;
 import org.apache.kylin.metadata.realization.IRealization;
 import org.apache.kylin.query.routing.NoRealizationFoundException;
 import org.apache.kylin.query.routing.QueryRouter;
@@ -102,8 +103,9 @@ public class OLAPToEnumerableConverter extends ConverterImpl implements Enumerab
             System.out.println("EXECUTION PLAN AFTER REWRITE");
             System.out.println(dumpPlan);
         }
-
-        return impl.visitChild(this, 0, inputAsEnum, pref);
+        Result result= impl.visitChild(this, 0, inputAsEnum, pref);
+        QueryManager.getInstance().getCurrentRunningQuery().finishSqlParse();
+        return result;
     }
 
     private Result buildHiveResult(EnumerableRelImplementor enumImplementor, Prefer pref, OLAPContext context) {

@@ -53,6 +53,7 @@ import org.apache.kylin.common.util.Bytes;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.metadata.query.QueryManager;
 import org.apache.kylin.query.relnode.OLAPContext;
 import org.apache.kylin.rest.constant.Constant;
 import org.apache.kylin.rest.model.ColumnMeta;
@@ -112,13 +113,16 @@ public class QueryService extends BasicService {
     }
 
     public SQLResponse query(SQLRequest sqlRequest) throws Exception {
+        QueryManager queryManager = QueryManager.getInstance();
+        String queryId = null;
         try {
             badQueryDetector.queryStart(Thread.currentThread(), sqlRequest);
-
+            queryId = queryManager.startQuery(sqlRequest.getProject(),sqlRequest.getSql());
             return queryWithSqlMassage(sqlRequest);
 
         } finally {
             badQueryDetector.queryEnd(Thread.currentThread());
+            queryManager.endQuery(queryId);
         }
     }
 
@@ -347,7 +351,7 @@ public class QueryService extends BasicService {
 
         try {
             conn = cacheService.getOLAPDataSource(sqlRequest.getProject()).getConnection();
-
+            QueryManager.getInstance().getCurrentRunningQuery().startSqlParse();
             if (sqlRequest instanceof PrepareSqlRequest) {
                 PreparedStatement preparedState = conn.prepareStatement(sql);
 
