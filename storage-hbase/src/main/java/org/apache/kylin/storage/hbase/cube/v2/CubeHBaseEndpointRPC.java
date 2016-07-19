@@ -72,7 +72,7 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
 
     public static final Logger logger = LoggerFactory.getLogger(CubeHBaseEndpointRPC.class);
 
-    private static ThreadFactory customThreadfactory = new ThreadFactoryBuilder().setNameFormat("CubeHBaseEndpointRPC-Thread").setDaemon(false).setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
+    private static ThreadFactory customThreadfactory = new ThreadFactoryBuilder().setNameFormat("CubeHBaseEndpointRPC-Thread-%d").setDaemon(false).setUncaughtExceptionHandler(new Thread.UncaughtExceptionHandler() {
         @Override
         public void uncaughtException(Thread t, Throwable e) {
             logger.error("Caught exception in thread " + t.getName() + ": ", e);
@@ -263,34 +263,41 @@ public class CubeHBaseEndpointRPC extends CubeHBaseRPC {
         final ExpectedSizeIterator epResultItr = new ExpectedSizeIterator(scanRequests.size() * shardNum);
 
         for (final Pair<byte[], byte[]> epRange : getEPKeyRanges(cuboidBaseShard, shardNum, totalShards)) {
+            logger.debug("Submitting rpc request.");
             executorService.submit(new Runnable() {
                 @Override
                 public void run() {
+                    logger.debug("Rpc request running.");
                     for (int i = 0; i < scanRequests.size(); ++i) {
                         int scanIndex = i;
-                        CubeVisitProtos.CubeVisitRequest.Builder builder = CubeVisitProtos.CubeVisitRequest.newBuilder();
-                        builder.setGtScanRequest(scanRequestByteStrings.get(scanIndex)).setHbaseRawScan(rawScanByteStrings.get(scanIndex));
-                        for (IntList intList : hbaseColumnsToGTIntList) {
-                            builder.addHbaseColumnsToGT(intList);
-                        }
-                        builder.setRowkeyPreambleSize(cubeSeg.getRowKeyPreambleSize());
-                        builder.setBehavior(toggle);
-
-                        Map<byte[], CubeVisitProtos.CubeVisitResponse> results;
-                        try {
-                            results = getResults(builder.build(), conn.getTable(cubeSeg.getStorageLocationIdentifier()), epRange.getFirst(), epRange.getSecond());
-                        } catch (Throwable throwable) {
-                            throw new RuntimeException("Error when visiting cubes by endpoint:", throwable);
-                        }
-
-                        for (Map.Entry<byte[], CubeVisitProtos.CubeVisitResponse> result : results.entrySet()) {
-                            totalScannedCount.addAndGet(result.getValue().getStats().getScannedRowCount());
-                            logger.info(getStatsString(result));
-                            try {
-                                epResultItr.append(CompressionUtils.decompress(HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows())));
-                            } catch (IOException | DataFormatException e) {
-                                throw new RuntimeException("Error when decompressing", e);
+                        logger.debug("Rpc scanRequests.");
+                        try{
+                            CubeVisitProtos.CubeVisitRequest.Builder builder = CubeVisitProtos.CubeVisitRequest.newBuilder();
+                            builder.setGtScanRequest(scanRequestByteStrings.get(scanIndex)).setHbaseRawScan(rawScanByteStrings.get(scanIndex));
+                            for (IntList intList : hbaseColumnsToGTIntList) {
+                                builder.addHbaseColumnsToGT(intList);
                             }
+                            builder.setRowkeyPreambleSize(cubeSeg.getRowKeyPreambleSize());
+                            builder.setBehavior(toggle);
+    
+                            Map<byte[], CubeVisitProtos.CubeVisitResponse> results;
+                            try {
+                                results = getResults(builder.build(), conn.getTable(cubeSeg.getStorageLocationIdentifier()), epRange.getFirst(), epRange.getSecond());
+                            } catch (Throwable throwable) {
+                                throw new RuntimeException("Error when visiting cubes by endpoint:", throwable);
+                            }
+    
+                            for (Map.Entry<byte[], CubeVisitProtos.CubeVisitResponse> result : results.entrySet()) {
+                                totalScannedCount.addAndGet(result.getValue().getStats().getScannedRowCount());
+                                logger.info(getStatsString(result));
+                                try {
+                                    epResultItr.append(CompressionUtils.decompress(HBaseZeroCopyByteString.zeroCopyGetBytes(result.getValue().getCompressedRows())));
+                                } catch (IOException | DataFormatException e) {
+                                    throw new RuntimeException("Error when decompressing", e);
+                                }
+                            }
+                        }catch(Throwable t){
+                            logger.error("Unexptectd error in Rpc request", t);
                         }
                     }
                 }
