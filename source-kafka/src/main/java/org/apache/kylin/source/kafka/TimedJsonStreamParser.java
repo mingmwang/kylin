@@ -1,48 +1,38 @@
 /*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Licensed to the Apache Software Foundation (ASF) under one or more
- *
- *  contributor license agreements. See the NOTICE file distributed with
- *
- *  this work for additional information regarding copyright ownership.
- *
- *  The ASF licenses this file to You under the Apache License, Version 2.0
- *
- *  (the "License"); you may not use this file except in compliance with
- *
- *  the License. You may obtain a copy of the License at
- *
- *
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *
- *
- *  Unless required by applicable law or agreed to in writing, software
- *
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *
- *  See the License for the specific language governing permissions and
- *
- *  limitations under the License.
- *
- * /
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.apache.kylin.source.kafka;
 
 import java.io.IOException;
-import java.util.*;
+import java.lang.reflect.Constructor;
+import java.nio.ByteBuffer;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.TreeMap;
+import java.util.Collections;
+import java.util.Arrays;
 
-import kafka.message.MessageAndOffset;
-
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import org.apache.commons.lang3.StringUtils;
-import org.apache.kylin.common.util.DateFormat;
-import org.apache.kylin.common.util.StreamingMessage;
-import org.apache.kylin.common.util.TimeUtil;
+import org.apache.kylin.common.util.ByteBufferBackedInputStream;
+import org.apache.kylin.common.util.StreamingMessageRow;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,97 +44,82 @@ import com.fasterxml.jackson.databind.type.SimpleType;
 import com.google.common.collect.Lists;
 
 /**
- * each json message with a "timestamp" field
+ * An utility class which parses a JSON streaming message to a list of strings (represent a row in table).
+ * <p>
+ * Each message should have a property whose value represents the message's timestamp, default the column name is "timestamp"
+ * but can be customized by StreamingParser#PROPERTY_TS_PARSER.
+ * <p>
+ * By default it will parse the timestamp col value as Unix time. If the format isn't Unix time, need specify the time parser
+ * with property StreamingParser#PROPERTY_TS_PARSER.
+ * <p>
+ * It also support embedded JSON format; Use a separator (customized by StreamingParser#EMBEDDED_PROPERTY_SEPARATOR) to concat
+ * the property names.
  */
 public final class TimedJsonStreamParser extends StreamingParser {
 
     private static final Logger logger = LoggerFactory.getLogger(TimedJsonStreamParser.class);
 
     private List<TblColRef> allColumns;
-    private boolean formatTs = false;//not used
-    private final ObjectMapper mapper = new ObjectMapper();
-    private String tsColName = "timestamp";
-    private final JavaType mapType = MapType.construct(HashMap.class, SimpleType.construct(String.class), SimpleType.construct(String.class));
+    private final ObjectMapper mapper;
+    private String tsColName = null;
+    private String tsParser = null;
+    private String separator = null;
+    private final Map<String, Object> root = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    private final Map<String, Object> tempMap = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+    private final Map<String, String[]> nameMap = new HashMap<>();
 
-    public TimedJsonStreamParser(List<TblColRef> allColumns, String propertiesStr) {
+    private final JavaType mapType = MapType.construct(HashMap.class, SimpleType.construct(String.class), SimpleType.construct(Object.class));
+
+    private AbstractTimeParser streamTimeParser;
+
+    public TimedJsonStreamParser(List<TblColRef> allColumns, Map<String, String> properties) {
         this.allColumns = allColumns;
-        if (!StringUtils.isEmpty(propertiesStr)) {
-            String[] properties = propertiesStr.split(";");
-            for (String prop : properties) {
-                try {
-                    String[] parts = prop.split("=");
-                    if (parts.length == 2) {
-                        switch (parts[0]) {
-                        case "formatTs":
-                            this.formatTs = Boolean.valueOf(parts[1]);
-                            break;
-                        case "tsColName":
-                            this.tsColName = parts[1];
-                            break;
-                        default:
-                            break;
-                        }
-                    }
-                } catch (Exception e) {
-                    logger.error("Failed to parse property " + prop);
-                    //ignore
-                }
-            }
+        if (properties == null) {
+            properties = StreamingParser.defaultProperties;
         }
 
-        logger.info("TimedJsonStreamParser with formatTs {} tsColName {}", formatTs, tsColName);
+        tsColName = properties.get(PROPERTY_TS_COLUMN_NAME);
+        tsParser = properties.get(PROPERTY_TS_PARSER);
+        separator = properties.get(EMBEDDED_PROPERTY_SEPARATOR);
+
+        if (!StringUtils.isEmpty(tsParser)) {
+            try {
+                Class clazz = Class.forName(tsParser);
+                Constructor constructor = clazz.getConstructor(Map.class);
+                streamTimeParser = (AbstractTimeParser) constructor.newInstance(properties);
+            } catch (Exception e) {
+                throw new IllegalStateException("Invalid StreamingConfig, tsParser " + tsParser + ", parserProperties " + properties + ".", e);
+            }
+        } else {
+            throw new IllegalStateException("Invalid StreamingConfig, tsParser " + tsParser + ", parserProperties " + properties + ".");
+        }
+        mapper = new ObjectMapper();
+        mapper.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES);
+        mapper.disable(DeserializationFeature.FAIL_ON_INVALID_SUBTYPE);
+        mapper.enable(DeserializationFeature.USE_JAVA_ARRAY_FOR_JSON_ARRAY);
     }
 
     @Override
-    public StreamingMessage parse(MessageAndOffset messageAndOffset) {
+    public List<StreamingMessageRow> parse(ByteBuffer buffer) {
         try {
-            Map<String, String> message = mapper.readValue(new ByteBufferBackedInputStream(messageAndOffset.message().payload()), mapType);
-            Map<String, String> root = new TreeMap<String, String>(String.CASE_INSENSITIVE_ORDER);
+            Map<String, Object> message = mapper.readValue(new ByteBufferBackedInputStream(buffer), mapType);
+            root.clear();
             root.putAll(message);
-            String tsStr = root.get(tsColName);
-            //Preconditions.checkArgument(!StringUtils.isEmpty(tsStr), "Timestamp field " + tsColName + //
-            //" cannot be null, the message offset is " + messageAndOffset.getOffset() + " content is " + new String(messageAndOffset.getRawData()));
-            long t;
-            if (StringUtils.isEmpty(tsStr)) {
-                t = 0;
-            } else {
-                t = Long.valueOf(tsStr);
-            }
+            String tsStr = objToString(root.get(tsColName));
+            long t = streamTimeParser.parseTime(tsStr);
             ArrayList<String> result = Lists.newArrayList();
 
-            long normalized = 0;
             for (TblColRef column : allColumns) {
-                String columnName = column.getName();
-                if (columnName.equalsIgnoreCase("minute_start")) {
-                    normalized = TimeUtil.getMinuteStart(t);
-                    result.add(DateFormat.formatToTimeStr(normalized));
-                } else if (columnName.equalsIgnoreCase("hour_start")) {
-                    normalized = TimeUtil.getHourStart(t);
-                    result.add(DateFormat.formatToTimeStr(normalized));
-                } else if (columnName.equalsIgnoreCase("day_start")) {
-                    //from day_start on, formatTs will output date format
-                    normalized = TimeUtil.getDayStart(t);
-                    result.add(DateFormat.formatToDateStr(normalized));
-                } else if (columnName.equalsIgnoreCase("week_start")) {
-                    normalized = TimeUtil.getWeekStart(t);
-                    result.add(DateFormat.formatToDateStr(normalized));
-                } else if (columnName.equalsIgnoreCase("month_start")) {
-                    normalized = TimeUtil.getMonthStart(t);
-                    result.add(DateFormat.formatToDateStr(normalized));
-                } else if (columnName.equalsIgnoreCase("quarter_start")) {
-                    normalized = TimeUtil.getQuarterStart(t);
-                    result.add(DateFormat.formatToDateStr(normalized));
-                } else if (columnName.equalsIgnoreCase("year_start")) {
-                    normalized = TimeUtil.getYearStart(t);
-                    result.add(DateFormat.formatToDateStr(normalized));
-                } else {
-                    String x = root.get(columnName.toLowerCase());
-                    result.add(x);
+                final String columnName = column.getName().toLowerCase();
+                if (populateDerivedTimeColumns(columnName, result, t) == false) {
+                    result.add(getValueByKey(columnName, root));
                 }
             }
 
-            return new StreamingMessage(result, messageAndOffset.offset(), t, Collections.<String, Object> emptyMap());
-
+            StreamingMessageRow streamingMessageRow = new StreamingMessageRow(result, 0, t, Collections.<String, Object>emptyMap());
+            List<StreamingMessageRow> messageRowList = new ArrayList<StreamingMessageRow>();
+            messageRowList.add(streamingMessageRow);
+            return messageRowList;
         } catch (IOException e) {
             logger.error("error", e);
             throw new RuntimeException(e);
@@ -152,8 +127,46 @@ public final class TimedJsonStreamParser extends StreamingParser {
     }
 
     @Override
-    public boolean filter(StreamingMessage streamingMessage) {
+    public boolean filter(StreamingMessageRow streamingMessageRow) {
         return true;
+    }
+
+    protected String getValueByKey(String key, Map<String, Object> rootMap) throws IOException {
+        if (rootMap.containsKey(key)) {
+            return objToString(rootMap.get(key));
+        }
+
+        String[] names = nameMap.get(key);
+        if (names == null && key.contains(separator)) {
+            names = key.toLowerCase().split(separator);
+            nameMap.put(key, names);
+        }
+
+        if (names != null && names.length > 0) {
+            tempMap.clear();
+            tempMap.putAll(rootMap);
+            for (int i = 0; i < names.length - 1; i++) {
+                Object o = tempMap.get(names[i]);
+                if (o instanceof Map) {
+                    tempMap.clear();
+                    tempMap.putAll((Map<String, Object>) o);
+                } else {
+                    throw new IOException("Property '" + names[i] + "' is not embedded format");
+                }
+            }
+            Object finalObject = tempMap.get(names[names.length - 1]);
+            return objToString(finalObject);
+        }
+
+        return StringUtils.EMPTY;
+    }
+
+    public static String objToString(Object value) {
+        if (value == null)
+            return StringUtils.EMPTY;
+        if (value.getClass().isArray())
+            return String.valueOf(Arrays.asList((Object[]) value));
+        return String.valueOf(value);
     }
 
 }

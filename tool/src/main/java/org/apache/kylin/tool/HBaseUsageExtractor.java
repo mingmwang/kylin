@@ -21,6 +21,7 @@ package org.apache.kylin.tool;
 import java.io.File;
 import java.io.IOException;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.util.List;
 
 import org.apache.commons.cli.Option;
@@ -50,7 +51,7 @@ import com.google.common.collect.Lists;
 
 public class HBaseUsageExtractor extends AbstractInfoExtractor {
 
-    private static final Logger logger = LoggerFactory.getLogger(CubeMetaExtractor.class);
+    private static final Logger logger = LoggerFactory.getLogger(HBaseUsageExtractor.class);
     @SuppressWarnings("static-access")
     private static final Option OPTION_CUBE = OptionBuilder.withArgName("cube").hasArg().isRequired(false).withDescription("Specify which cube to extract").create("cube");
     @SuppressWarnings("static-access")
@@ -99,22 +100,26 @@ public class HBaseUsageExtractor extends AbstractInfoExtractor {
         projectManager = ProjectManager.getInstance(kylinConfig);
 
         if (optionsHelper.hasOption(OPTION_PROJECT)) {
-            String projectName = optionsHelper.getOptionValue(OPTION_PROJECT);
-            ProjectInstance projectInstance = projectManager.getProject(projectName);
-            if (projectInstance == null) {
-                throw new IllegalArgumentException("Project " + projectName + " does not exist");
-            }
-            List<RealizationEntry> realizationEntries = projectInstance.getRealizationEntries();
-            for (RealizationEntry realizationEntry : realizationEntries) {
-                retrieveResourcePath(getRealization(realizationEntry));
+            String projectNames = optionsHelper.getOptionValue(OPTION_PROJECT);
+            for (String projectName: projectNames.split(",")) {
+                ProjectInstance projectInstance = projectManager.getProject(projectName);
+                if (projectInstance == null) {
+                    throw new IllegalArgumentException("Project " + projectName + " does not exist");
+                }
+                List<RealizationEntry> realizationEntries = projectInstance.getRealizationEntries();
+                for (RealizationEntry realizationEntry : realizationEntries) {
+                    retrieveResourcePath(getRealization(realizationEntry));
+                }
             }
         } else if (optionsHelper.hasOption(OPTION_CUBE)) {
-            String cubeName = optionsHelper.getOptionValue(OPTION_CUBE);
-            IRealization realization;
-            if ((realization = cubeManager.getRealization(cubeName)) != null) {
-                retrieveResourcePath(realization);
-            } else {
-                throw new IllegalArgumentException("No cube found with name of " + cubeName);
+            String cubeNames = optionsHelper.getOptionValue(OPTION_CUBE);
+            for (String cubeName : cubeNames.split(",")) {
+                IRealization realization = cubeManager.getRealization(cubeName);
+                if (realization != null) {
+                    retrieveResourcePath(realization);
+                } else {
+                    throw new IllegalArgumentException("No cube found with name of " + cubeName);
+                }
             }
         }
 
@@ -184,9 +189,9 @@ public class HBaseUsageExtractor extends AbstractInfoExtractor {
             FileUtils.forceMkdir(hdfsDir);
             CliCommandExecutor cliCommandExecutor = kylinConfig.getCliCommandExecutor();
             String output = cliCommandExecutor.execute("hadoop fs -ls -R " + conf.get("hbase.rootdir") + "/data/default/KYLIN_*").getSecond();
-            FileUtils.writeStringToFile(new File(hdfsDir, "hdfs-files.list"), output);
+            FileUtils.writeStringToFile(new File(hdfsDir, "hdfs-files.list"), output, Charset.defaultCharset());
             output = cliCommandExecutor.execute("hadoop fs -ls -R " + conf.get("hbase.rootdir") + "/data/default/kylin_*").getSecond();
-            FileUtils.writeStringToFile(new File(hdfsDir, "hdfs-files.list"), output, true);
+            FileUtils.writeStringToFile(new File(hdfsDir, "hdfs-files.list"), output, Charset.defaultCharset(), true);
         } catch (Exception e) {
             logger.warn("HBase hdfs status fetch failed: ", e);
         }

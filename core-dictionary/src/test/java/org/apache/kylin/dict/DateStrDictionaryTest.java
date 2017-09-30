@@ -22,6 +22,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.fail;
 
+import org.apache.kylin.dimension.DateDimEnc;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -37,7 +38,7 @@ public class DateStrDictionaryTest {
     @Test
     public void testMinMaxId() {
         assertEquals(0, dict.getIdFromValue("0000-01-01"));
-        assertEquals(DateStrDictionary.ID_9999_12_31, dict.getIdFromValue("9999-12-31"));
+        assertEquals(DateDimEnc.ID_9999_12_31, dict.getIdFromValue("9999-12-31"));
 
         try {
             dict.getValueFromId(-2); // -1 is id for NULL
@@ -47,7 +48,7 @@ public class DateStrDictionaryTest {
         }
 
         try {
-            dict.getValueFromId(DateStrDictionary.ID_9999_12_31 + 1);
+            dict.getValueFromId(DateDimEnc.ID_9999_12_31 + 1);
             fail("IllegalArgumentException expected");
         } catch (IllegalArgumentException e) {
             // good
@@ -65,9 +66,6 @@ public class DateStrDictionaryTest {
     public void testNull() {
         int nullId = dict.getIdFromValue(null);
         assertNull(dict.getValueFromId(nullId));
-        int nullId2 = dict.getIdFromValueBytes(null, 0, 0);
-        assertEquals(dict.getValueBytesFromId(nullId2, null, 0), -1);
-        assertEquals(nullId, nullId2);
     }
 
     @Test
@@ -77,6 +75,12 @@ public class DateStrDictionaryTest {
         checkPair("1975-06-24");
         checkPair("2024-10-04");
         checkPair("9999-12-31");
+    }
+
+    private void checkPair(String dateStr) {
+        int id = dict.getIdFromValue(dateStr);
+        String dateStrBack = dict.getValueFromId(id);
+        assertEquals(dateStr, dateStrBack);
     }
 
     @Test
@@ -96,9 +100,4 @@ public class DateStrDictionaryTest {
         }
     }
 
-    private void checkPair(String dateStr) {
-        int id = dict.getIdFromValue(dateStr);
-        String dateStrBack = dict.getValueFromId(id);
-        assertEquals(dateStr, dateStrBack);
-    }
 }

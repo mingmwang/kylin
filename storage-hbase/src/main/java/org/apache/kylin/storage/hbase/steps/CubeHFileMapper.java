@@ -53,7 +53,7 @@ public class CubeHFileMapper extends KylinMapper<Text, Text, ImmutableBytesWrita
     List<KeyValueCreator> keyValueCreators;
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
         cubeName = context.getConfiguration().get(BatchConstants.CFG_CUBE_NAME);
 
@@ -74,7 +74,7 @@ public class CubeHFileMapper extends KylinMapper<Text, Text, ImmutableBytesWrita
     }
 
     @Override
-    public void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+    public void doMap(Text key, Text value, Context context) throws IOException, InterruptedException {
         outputKey.set(key.getBytes(), 0, key.getLength());
         KeyValue outputValue;
 

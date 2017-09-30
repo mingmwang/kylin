@@ -24,8 +24,10 @@ import java.util.List;
 import java.util.Set;
 
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.DateFormat;
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.dict.TrieDictionaryForest;
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.junit.After;
@@ -56,46 +58,65 @@ public class LookupTableTest extends LocalFileMetadataTestCase {
     @Test
     public void testScan() throws Exception {
         List<String> values = new ArrayList<String>();
-        values.add("2012-01-24");
-        values.add("2012-12-30");
+        values.add(millis("2012-01-24"));
+        values.add(millis("2012-12-30"));
         List<String> results = lookupTable.scan("CAL_DT", values, "YEAR_BEG_DT");
 
         Assert.assertTrue(results.size() > 0);
         for (String i : results) {
             System.out.println(i);
 
-            Assert.assertEquals("2012-01-01", i);
+            Assert.assertEquals(millis("2012-01-01"), i);
         }
     }
 
     @Test
     public void testMapRange() throws Exception {
-        List<String> values = new ArrayList<String>();
-        values.add("2012-01-24");
-        values.add("2012-12-30");
-        Pair<String, String> results = lookupTable.mapRange("CAL_DT", "2012-01-24", "2012-12-30", "QTR_BEG_DT");
+        Pair<String, String> results = lookupTable.mapRange("CAL_DT", millis("2012-01-24"), millis("2012-12-30"), "QTR_BEG_DT");
 
         Assert.assertTrue(results != null);
         System.out.println("The first qtr_beg_dt is " + results.getFirst());
         System.out.println("The last qtr_beg_dt is " + results.getSecond());
 
-        Assert.assertEquals("2012-01-01", results.getFirst());
-        Assert.assertEquals("2012-10-01", results.getSecond());
+        Assert.assertEquals(millis("2012-01-01"), results.getFirst());
+        Assert.assertEquals(millis("2012-10-01"), results.getSecond());
+    }
+
+    @Test
+    public void testMapRange2() throws Exception {
+        Pair<String, String> results = lookupTable.mapRange("WEEK_BEG_DT", millis("2013-05-01"), millis("2013-08-01"), "CAL_DT");
+
+        System.out.println(DateFormat.formatToDateStr(Long.parseLong(results.getFirst())));
+        System.out.println(DateFormat.formatToDateStr(Long.parseLong(results.getSecond())));
+
+        Assert.assertEquals(millis("2013-05-05"), results.getFirst());
+        Assert.assertEquals(millis("2013-08-03"), results.getSecond());
     }
 
     @Test
     public void testMapValues() throws Exception {
         Set<String> values = new HashSet<String>();
-        values.add("2012-01-24");
-        values.add("2012-12-30");
+        values.add(millis("2012-01-24"));
+        values.add(millis("2012-12-30"));
         Set<String> results = lookupTable.mapValues("CAL_DT", values, "YEAR_BEG_DT");
 
         Assert.assertTrue(results.size() == 1);
         for (String i : results) {
             System.out.println(i);
 
-            Assert.assertEquals("2012-01-01", i);
+            Assert.assertEquals(millis("2012-01-01"), i);
         }
+    }
+
+    @Test
+    public void testGetClassName(){
+        String name = TrieDictionaryForest.class.getName();
+        System.out.println(name);
+
+    }
+
+    private String millis(String dateStr) {
+        return String.valueOf(DateFormat.stringToMillis(dateStr));
     }
 
     public LookupTable<String> initLookupTable() throws Exception {
@@ -106,7 +127,7 @@ public class LookupTableTest extends LocalFileMetadataTestCase {
         String[] pkCols = new String[] { "CAL_DT" };
         String snapshotResPath = "/table_snapshot/TEST_CAL_DT.csv/4af48c94-86de-4e22-a4fd-c49b06cbaa4f.snapshot";
         SnapshotTable snapshot = getSnapshotManager().getSnapshotTable(snapshotResPath);
-        TableDesc tableDesc = metaMgr.getTableDesc(tableName);
+        TableDesc tableDesc = metaMgr.getTableDesc(tableName, "default");
         LookupTable<String> lt = new LookupStringTable(tableDesc, pkCols, snapshot);
 
         System.out.println(lt);

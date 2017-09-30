@@ -42,13 +42,13 @@ KylinApp.service('kylinConfig', function (AdminService, $log) {
 
   this.getTimeZone = function () {
     if (!this.timezone) {
-      this.timezone = this.getProperty("kylin.rest.timezone").trim();
+      this.timezone = this.getProperty("kylin.web.timezone").trim();
     }
     return this.timezone;
   }
 
   this.isCacheEnabled = function(){
-    var status = this.getProperty("kylin.query.cache.enabled").trim();
+    var status = this.getProperty("kylin.query.cache-enabled").trim();
     if(status!=='false'){
       return true;
     }
@@ -57,7 +57,7 @@ KylinApp.service('kylinConfig', function (AdminService, $log) {
 
   //deprecated
   this.getDeployEnv = function () {
-    this.deployEnv = this.getProperty("deploy.env");
+    this.deployEnv = this.getProperty("kylin.env");
     if (!this.deployEnv) {
       return "DEV";
     }
@@ -65,19 +65,35 @@ KylinApp.service('kylinConfig', function (AdminService, $log) {
   }
 
   this.getHiveLimit = function () {
-    this.hiveLimit = this.getProperty("kylin.web.hive.limit");
+    this.hiveLimit = this.getProperty("kylin.web.hive-limit");
     if (!this.hiveLimit) {
       return 20;
     }
     return this.hiveLimit;
   }
+
+  this.getStorageEng = function () {
+    this.StorageEng = this.getProperty("kylin.storage.default").trim();
+      if (!this.StorageEng) {
+        return 2;
+      }
+      return this.StorageEng;
+    }
+
+  this.getCubeEng = function () {
+    this.CubeEng = this.getProperty("kylin.engine.default").trim();
+    if (!this.CubeEng) {
+      return 2;
+    }
+      return this.CubeEng;
+  }
   //fill config info for Config from backend
   this.initWebConfigInfo = function () {
 
     try {
-      Config.reference_links.hadoop.link = this.getProperty("kylin.web.hadoop").trim();
-      Config.reference_links.diagnostic.link = this.getProperty("kylin.web.diagnostic").trim();
-      Config.contact_mail = this.getProperty("kylin.web.contact_mail").trim();
+      Config.reference_links.hadoop.link = this.getProperty("kylin.web.link-hadoop").trim();
+      Config.reference_links.diagnostic.link = this.getProperty("kylin.web.link-diagnostic").trim();
+      Config.contact_mail = this.getProperty("kylin.web.contact-mail").trim();
       var doc_length = this.getProperty("kylin.web.help.length").trim();
       for (var i = 0; i < doc_length; i++) {
         var _doc = {};
@@ -89,6 +105,14 @@ KylinApp.service('kylinConfig', function (AdminService, $log) {
     } catch (e) {
       $log.error("failed to load kylin web info");
     }
+  }
+
+  this.isExternalAclEnabled = function() {
+    var status = this.getProperty("kylin.server.external-acl-provider").trim();
+    if (status == '') {
+      return false;
+    }
+    return true;
   }
 
 });

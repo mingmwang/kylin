@@ -21,8 +21,6 @@ package org.apache.kylin.cube.cli;
 import java.util.List;
 
 import org.apache.commons.lang.ArrayUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.cube.CubeDescManager;
@@ -30,6 +28,8 @@ import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 
@@ -38,7 +38,8 @@ import com.google.common.collect.Lists;
  * won't be useful unless something went wrong.
  */
 public class CubeSignatureRefresher {
-    private static final Log logger = LogFactory.getLog(CubeSignatureRefresher.class);
+    private static final Logger logger = LoggerFactory.getLogger(CubeSignatureRefresher.class);
+
     private KylinConfig config = null;
     private ResourceStore store;
     private String[] cubeNames;
@@ -88,7 +89,7 @@ public class CubeSignatureRefresher {
     private void updateCubeDesc(CubeDesc cubeDesc) {
         try {
             String calculatedSign = cubeDesc.calculateSignature();
-            if (cubeDesc.getSignature() == null || (!cubeDesc.getSignature().equals(calculatedSign)) ){
+            if (cubeDesc.getSignature() == null || (!cubeDesc.getSignature().equals(calculatedSign))) {
                 cubeDesc.setSignature(calculatedSign);
                 store.putResource(cubeDesc.getResourcePath(), cubeDesc, CubeDescManager.CUBE_DESC_SERIALIZER);
                 updatedResources.add(cubeDesc.getResourcePath());
@@ -99,9 +100,9 @@ public class CubeSignatureRefresher {
         }
     }
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         if (args != null && args.length > 1) {
-            System.out.println("Usage: java CubeDescSignatureUpdate [Cubes]; e.g, cube1,cube2 ");
+            System.out.println("Usage: java CubeSignatureRefresher [Cubes]; e.g, cube1,cube2 ");
             return;
         }
 
@@ -109,7 +110,7 @@ public class CubeSignatureRefresher {
         metadataUpgrade.update();
 
         logger.info("=================================================================");
-        logger.info("Run CubeDescSignatureUpdate completed;");
+        logger.info("Run CubeSignatureRefresher completed;");
 
         if (!metadataUpgrade.updatedResources.isEmpty()) {
             logger.info("Following resources are updated successfully:");

@@ -27,6 +27,7 @@ import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.metadata.filter.CaseTupleFilter;
 import org.apache.kylin.metadata.filter.ColumnTupleFilter;
 import org.apache.kylin.metadata.filter.CompareTupleFilter;
@@ -37,19 +38,30 @@ import org.apache.kylin.metadata.filter.LogicalTupleFilter;
 import org.apache.kylin.metadata.filter.StringCodeSystem;
 import org.apache.kylin.metadata.filter.TupleFilter;
 import org.apache.kylin.metadata.filter.TupleFilter.FilterOperatorEnum;
-import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.tuple.Tuple;
 import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 
 import com.google.common.collect.Lists;
 
 /**
  * @author xjiang
- * 
+ *
  */
-public class FilterBaseTest {
+public class FilterBaseTest extends LocalFileMetadataTestCase {
+
+    @BeforeClass
+    public static void setUp() throws Exception {
+        staticCreateTestMetadata();
+    }
+
+    @AfterClass
+    public static void after() throws Exception {
+        cleanAfterClass();
+    }
 
     @SuppressWarnings("rawtypes")
     static final IFilterCodeSystem CS = StringCodeSystem.INSTANCE;
@@ -58,14 +70,12 @@ public class FilterBaseTest {
         List<TblColRef> groups = new ArrayList<TblColRef>();
 
         TableDesc t1 = TableDesc.mockup("DEFAULT.TEST_KYLIN_FACT");
-        ColumnDesc c1 = ColumnDesc.mockup(t1, 2, "CAL_DT", "string");
-        TblColRef cf1 = new TblColRef(c1);
-        groups.add(cf1);
+        TblColRef c1 = TblColRef.mockup(t1, 2, "CAL_DT", "string");
+        groups.add(c1);
 
         TableDesc t2 = TableDesc.mockup("DEFAULT.TEST_CATEGORY_GROUPINGS");
-        ColumnDesc c2 = ColumnDesc.mockup(t2, 14, "META_CATEG_NAME", "string");
-        TblColRef cf2 = new TblColRef(c2);
-        groups.add(cf2);
+        TblColRef c2 = TblColRef.mockup(t2, 14, "META_CATEG_NAME", "string");
+        groups.add(c2);
 
         return groups;
     }
@@ -163,8 +173,8 @@ public class FilterBaseTest {
         return compareFilter;
     }
 
-    protected CompareTupleFilter buildCompareDynamicFilter(List<TblColRef> groups) {
-        CompareTupleFilter compareFilter = new CompareTupleFilter(FilterOperatorEnum.EQ);
+    protected CompareTupleFilter buildCompareDynamicFilter(List<TblColRef> groups, FilterOperatorEnum operator) {
+        CompareTupleFilter compareFilter = new CompareTupleFilter(operator);
         compareFilter.addChild(new ColumnTupleFilter(groups.get(0)));
         compareFilter.addChild(new DynamicTupleFilter("?0"));
         compareFilter.bindVariable("?0", "abc");

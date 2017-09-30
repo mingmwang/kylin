@@ -1,23 +1,24 @@
 /*
- *  Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements. See the NOTICE file distributed with
- *  this work for additional information regarding copyright ownership.
- *  The ASF licenses this file to You under the Apache License, Version 2.0
- *  (the "License"); you may not use this file except in compliance with
- *  the License. You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- */
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
 
 package org.apache.kylin.cube.inmemcubing;
 
-import static org.apache.kylin.common.util.MemoryBudgetController.*;
+import static org.apache.kylin.common.util.MemoryBudgetController.ONE_MB;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -49,7 +50,7 @@ import org.slf4j.LoggerFactory;
 public class MemDiskStore implements IGTStore, Closeable {
 
     private static final Logger logger = LoggerFactory.getLogger(MemDiskStore.class);
-    private static final boolean debug = true;
+    private static final boolean debug = false;
 
     private static final int STREAM_BUFFER_SIZE = 8192;
     private static final int MEM_CHUNK_SIZE_MB = 5;
@@ -276,12 +277,6 @@ public class MemDiskStore implements IGTStore, Closeable {
         public GTInfo getInfo() {
             return info;
         }
-
-        @Override
-        public int getScannedRowCount() {
-            return count;
-        }
-
     }
 
     private class Writer implements IGTWriter {
@@ -344,7 +339,7 @@ public class MemDiskStore implements IGTStore, Closeable {
         public void write(GTRecord rec) throws IOException {
             buf.clear();
             rec.exportColumns(info.getAllColumns(), buf);
-            
+
             int len = buf.position();
             dout.writeInt(len);
             dout.write(buf.array(), buf.arrayOffset(), len);
@@ -602,6 +597,7 @@ public class MemDiskStore implements IGTStore, Closeable {
             } catch (NullPointerException npe) {
                 // that's fine, async flusher may not present
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 logger.warn("async join interrupted", e);
             }
             synchronized (lock) {

@@ -25,7 +25,6 @@ KylinApp.service('JobList',function(JobService,$q){
     this.jobs={};
 
     this.list = function(jobRequest){
-
         var defer = $q.defer();
         JobService.list(jobRequest, function (jobs) {
             angular.forEach(jobs, function (job) {
@@ -38,19 +37,17 @@ KylinApp.service('JobList',function(JobService,$q){
                 } else {
                     _this.jobs[id] = job;
                 }
+                _this.jobs[id].dropped = false;
             });
 
             defer.resolve(jobs.length);
           },function(){
             defer.reject("failed to load jobs");
         });
-
         return defer.promise;
-
     };
 
     this.removeAll = function(){
         _this.jobs={};
     };
-
 });

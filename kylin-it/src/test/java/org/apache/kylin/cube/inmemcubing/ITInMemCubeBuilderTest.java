@@ -1,21 +1,19 @@
 /*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *  * Licensed to the Apache Software Foundation (ASF) under one
- *  * or more contributor license agreements.  See the NOTICE file
- *  * distributed with this work for additional information
- *  * regarding copyright ownership.  The ASF licenses this file
- *  * to you under the Apache License, Version 2.0 (the
- *  * "License"); you may not use this file except in compliance
- *  * with the License.  You may obtain a copy of the License at
- *  * 
- *  *     http://www.apache.org/licenses/LICENSE-2.0
- *  * 
- *  * Unless required by applicable law or agreed to in writing, software
- *  * distributed under the License is distributed on an "AS IS" BASIS,
- *  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  * See the License for the specific language governing permissions and
- *  * limitations under the License.
- * /
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
 package org.apache.kylin.cube.inmemcubing;
@@ -35,18 +33,19 @@ import java.util.concurrent.Future;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.kylin.common.KylinConfig;
-import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.cuboid.Cuboid;
 import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.cube.model.CubeJoinedFlatTableDesc;
+import org.apache.kylin.cube.model.CubeJoinedFlatTableEnrich;
 import org.apache.kylin.dict.DictionaryGenerator;
 import org.apache.kylin.dict.IterableDictionaryValueEnumerator;
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.engine.EngineFactory;
 import org.apache.kylin.gridtable.GTRecord;
 import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.junit.After;
@@ -82,9 +81,9 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
     }
 
     @Test
-    public void testKylinCube() throws Exception {
-        testBuild("test_kylin_cube_without_slr_left_join_empty", //
-                LOCALMETA_TEST_DATA + "/data/flatten_data_for_without_slr_left_join.csv", 70000, 4);
+    public void testSSBCubeMore() throws Exception {
+        testBuild("ssb", //
+                LOCALMETA_TEST_DATA + "/data/kylin_intermediate_ssb_19920101000000_19920201000000.csv", 7000, 4);
     }
 
     @Test
@@ -109,7 +108,8 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
 
     private void testBuildInner() throws Exception {
 
-        InMemCubeBuilder cubeBuilder = new InMemCubeBuilder(cube.getDescriptor(), dictionaryMap);
+        IJoinedFlatTableDesc flatDesc = EngineFactory.getJoinedFlatTableDesc(cube.getDescriptor());
+        InMemCubeBuilder cubeBuilder = new InMemCubeBuilder(cube.getCuboidScheduler(), flatDesc, dictionaryMap);
         //DoggedCubeBuilder cubeBuilder = new DoggedCubeBuilder(cube.getDescriptor(), dictionaryMap);
         cubeBuilder.setConcurrentThreads(nThreads);
 
@@ -149,8 +149,8 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
     }
 
     static void feedData(final CubeInstance cube, final String flatTable, ArrayBlockingQueue<List<String>> queue, int count, long randSeed) throws IOException, InterruptedException {
-        CubeJoinedFlatTableDesc flatTableDesc = new CubeJoinedFlatTableDesc(cube.getDescriptor(), null);
-        int nColumns = flatTableDesc.getColumnList().size();
+        IJoinedFlatTableDesc flatDesc = EngineFactory.getJoinedFlatTableDesc(cube.getDescriptor());
+        int nColumns = flatDesc.getAllColumns().size();
 
         @SuppressWarnings("unchecked")
         Set<String>[] distinctSets = new Set[nColumns];
@@ -190,16 +190,16 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
     static Map<TblColRef, Dictionary<String>> getDictionaryMap(CubeInstance cube, String flatTable) throws IOException {
         Map<TblColRef, Dictionary<String>> result = Maps.newHashMap();
         CubeDesc desc = cube.getDescriptor();
-        CubeJoinedFlatTableDesc flatTableDesc = new CubeJoinedFlatTableDesc(desc, null);
-        int nColumns = flatTableDesc.getColumnList().size();
+        CubeJoinedFlatTableEnrich flatDesc = new CubeJoinedFlatTableEnrich(EngineFactory.getJoinedFlatTableDesc(desc), desc);
+        int nColumns = flatDesc.getAllColumns().size();
 
         List<TblColRef> columns = Cuboid.getBaseCuboid(desc).getColumns();
         for (int c = 0; c < columns.size(); c++) {
             TblColRef col = columns.get(c);
             if (desc.getRowkey().isUseDictionary(col)) {
                 logger.info("Building dictionary for " + col);
-                List<byte[]> valueList = readValueList(flatTable, nColumns, flatTableDesc.getRowKeyColumnIndexes()[c]);
-                Dictionary<String> dict = DictionaryGenerator.buildDictionaryFromValueEnumerator(col.getType(), new IterableDictionaryValueEnumerator(valueList));
+                List<String> valueList = readValueList(flatTable, nColumns, flatDesc.getRowKeyColumnIndexes()[c]);
+                Dictionary<String> dict = DictionaryGenerator.buildDictionary(col.getType(), new IterableDictionaryValueEnumerator(valueList));
                 result.put(col, dict);
             }
         }
@@ -211,15 +211,15 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
             if (dictCols.isEmpty())
                 continue;
 
-            int[] flatTableIdx = flatTableDesc.getMeasureColumnIndexes()[measureIdx];
+            int[] flatTableIdx = flatDesc.getMeasureColumnIndexes()[measureIdx];
             List<TblColRef> paramCols = func.getParameter().getColRefs();
             for (int i = 0; i < paramCols.size(); i++) {
                 TblColRef col = paramCols.get(i);
                 if (dictCols.contains(col)) {
                     int colIdxOnFlat = flatTableIdx[i];
                     logger.info("Building dictionary for " + col);
-                    List<byte[]> valueList = readValueList(flatTable, nColumns, colIdxOnFlat);
-                    Dictionary<String> dict = DictionaryGenerator.buildDictionaryFromValueEnumerator(col.getType(), new IterableDictionaryValueEnumerator(valueList));
+                    List<String> valueList = readValueList(flatTable, nColumns, colIdxOnFlat);
+                    Dictionary<String> dict = DictionaryGenerator.buildDictionary(col.getType(), new IterableDictionaryValueEnumerator(valueList));
 
                     result.put(col, dict);
                 }
@@ -229,8 +229,8 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
         return result;
     }
 
-    private static List<byte[]> readValueList(String flatTable, int nColumns, int c) throws IOException {
-        List<byte[]> result = Lists.newArrayList();
+    private static List<String> readValueList(String flatTable, int nColumns, int c) throws IOException {
+        List<String> result = Lists.newArrayList();
         List<String> lines = FileUtils.readLines(new File(flatTable), "UTF-8");
         for (String line : lines) {
             String[] row = line.trim().split(",");
@@ -238,7 +238,7 @@ public class ITInMemCubeBuilderTest extends LocalFileMetadataTestCase {
                 throw new IllegalStateException();
             }
             if (row[c] != null) {
-                result.add(Bytes.toBytes(row[c]));
+                result.add(row[c]);
             }
         }
         return result;

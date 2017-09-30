@@ -35,8 +35,6 @@ import org.apache.calcite.avatica.NoSuchStatementException;
 import org.apache.calcite.avatica.QueryState;
 import org.apache.calcite.avatica.remote.TypedValue;
 
-import com.google.common.collect.ImmutableList;
-
 /**
  * Implementation of Avatica interface
  */
@@ -59,16 +57,34 @@ public class KylinMeta extends MetaImpl {
         result.signature = connection().mockPreparedSignature(sql);
         return result;
     }
-    
+
+    @Override
+    public ExecuteBatchResult prepareAndExecuteBatch(StatementHandle sh, List<String> sqlCommands) throws NoSuchStatementException {
+        return new ExecuteBatchResult(new long[]{});
+    }
+
+    @Override
+    public ExecuteBatchResult executeBatch(StatementHandle sh, List<List<TypedValue>> parameterValues) throws NoSuchStatementException {
+        return new ExecuteBatchResult(new long[]{});
+    }
+
     // real execution happens in KylinResultSet.execute()
     @Override
+    @Deprecated
     public ExecuteResult execute(StatementHandle sh, List<TypedValue> parameterValues, long maxRowCount) throws NoSuchStatementException {
         final MetaResultSet metaResultSet = MetaResultSet.create(sh.connectionId, sh.id, false, sh.signature, null);
-        return new ExecuteResult(ImmutableList.of(metaResultSet));
+        return new ExecuteResult(Collections.singletonList(metaResultSet));
+    }
+
+    @Override
+    public ExecuteResult execute(StatementHandle sh, List<TypedValue> parameterValues, int maxRowsInFirstFrame) throws NoSuchStatementException {
+        final MetaResultSet metaResultSet = MetaResultSet.create(sh.connectionId, sh.id, false, sh.signature, null);
+        return new ExecuteResult(Collections.singletonList(metaResultSet));
     }
 
     // mimic from CalciteMetaImpl, real execution happens via callback in KylinResultSet.execute()
     @Override
+    @Deprecated
     public ExecuteResult prepareAndExecute(StatementHandle sh, String sql, long maxRowCount, PrepareCallback callback) {
         try {
             synchronized (callback.getMonitor()) {
@@ -78,7 +94,23 @@ public class KylinMeta extends MetaImpl {
             }
             callback.execute();
             final MetaResultSet metaResultSet = MetaResultSet.create(sh.connectionId, sh.id, false, sh.signature, null);
-            return new ExecuteResult(ImmutableList.of(metaResultSet));
+            return new ExecuteResult(Collections.singletonList(metaResultSet));
+        } catch (SQLException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    @Override
+    public ExecuteResult prepareAndExecute(StatementHandle sh, String sql, long maxRowCount, int maxRowsInFirstFrame, PrepareCallback callback) throws NoSuchStatementException {
+        try {
+            synchronized (callback.getMonitor()) {
+                callback.clear();
+                sh.signature = connection().mockPreparedSignature(sql);
+                callback.assign(sh.signature, null, -1);
+            }
+            callback.execute();
+            final MetaResultSet metaResultSet = MetaResultSet.create(sh.connectionId, sh.id, false, sh.signature, null);
+            return new ExecuteResult(Collections.singletonList(metaResultSet));
         } catch (SQLException e) {
             throw new RuntimeException(e);
         }
@@ -177,7 +209,7 @@ public class KylinMeta extends MetaImpl {
             } catch (NoSuchFieldException e) {
                 throw new RuntimeException(e);
             }
-            columns.add(columnMetaData(name, index, field.getType()));
+            columns.add(columnMetaData(name, index, field.getType(), true));
             fields.add(field);
             fieldNames.add(fieldName);
         }

@@ -26,11 +26,11 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
 import java.util.Date;
 
 import org.apache.commons.lang.StringUtils;
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.dimension.DateDimEnc;
 
 /**
  * A dictionary for date string (date only, no time).
@@ -44,8 +44,6 @@ import org.apache.kylin.dimension.Dictionary;
  */
 @SuppressWarnings("serial")
 public class DateStrDictionary extends Dictionary<String> {
-
-    static final int ID_9999_12_31 = 3652426; // assume 0 based
 
     private String pattern;
     private int baseId;
@@ -62,7 +60,7 @@ public class DateStrDictionary extends Dictionary<String> {
     private void init(String datePattern, int baseId) {
         this.pattern = datePattern;
         this.baseId = baseId;
-        this.maxId = baseId + ID_9999_12_31;
+        this.maxId = baseId + DateDimEnc.ID_9999_12_31;
     }
 
     @Override
@@ -85,15 +83,11 @@ public class DateStrDictionary extends Dictionary<String> {
         return pattern.length();
     }
 
-    @Override
-    protected boolean isNullByteForm(byte[] value, int offset, int len) {
-        return value == null || len == 0;
-    }
 
     @Override
     final protected int getIdFromValueImpl(String value, int roundFlag) {
         Date date = stringToDate(value, pattern);
-        int id = calcIdFromSeqNo(getNumOfDaysSince0000(date));
+        int id = calcIdFromSeqNo((int) DateDimEnc.getNumOfDaysSince0000FromMillis(date.getTime()));
         if (id < baseId || id > maxId)
             throw new IllegalArgumentException("'" + value + "' encodes to '" + id + "' which is out of range [" + baseId + "," + maxId + "]");
 
@@ -104,47 +98,8 @@ public class DateStrDictionary extends Dictionary<String> {
     final protected String getValueFromIdImpl(int id) {
         if (id < baseId || id > maxId)
             throw new IllegalArgumentException("ID '" + id + "' is out of range [" + baseId + "," + maxId + "]");
-        Date d = getDateFromNumOfDaysSince0000(calcSeqNoFromId(id));
-        return dateToString(d, pattern);
-    }
-
-    private int getNumOfDaysSince0000(Date d) {
-        // 86400000 = 1000 * 60 * 60 * 24
-        // -719530 is offset of 0000-01-01
-        return (int) (d.getTime() / 86400000 + 719530);
-    }
-
-    private Date getDateFromNumOfDaysSince0000(int n) {
-        long millis = ((long) n - 719530) * 86400000;
-        return new Date(millis);
-    }
-
-    @Override
-    final protected int getIdFromValueBytesImpl(byte[] value, int offset, int len, int roundingFlag) {
-        try {
-            return getIdFromValue(new String(value, offset, len, "ISO-8859-1"));
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e); // never happen
-        }
-    }
-
-    @Override
-    final protected byte[] getValueBytesFromIdImpl(int id) {
-        String date = getValueFromId(id);
-        byte bytes[];
-        try {
-            bytes = date.getBytes("ISO-8859-1");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e); // never happen
-        }
-        return bytes;
-    }
-
-    @Override
-    final protected int getValueBytesFromIdImpl(int id, byte[] returnValue, int offset) {
-        byte bytes[] = getValueBytesFromIdImpl(id);
-        System.arraycopy(bytes, 0, returnValue, offset, bytes.length);
-        return bytes.length;
+        long millis = DateDimEnc.getMillisFromNumOfDaysSince0000(calcSeqNoFromId(id));
+        return dateToString(new Date(millis), pattern);
     }
 
     private int calcIdFromSeqNo(int seq) {
@@ -167,6 +122,7 @@ public class DateStrDictionary extends Dictionary<String> {
         int baseId = in.readInt();
         init(pattern, baseId);
     }
+
 
     @Override
     public int hashCode() {

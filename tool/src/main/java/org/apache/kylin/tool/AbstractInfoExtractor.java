@@ -21,6 +21,7 @@ package org.apache.kylin.tool;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.Charset;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 
@@ -87,10 +88,12 @@ public abstract class AbstractInfoExtractor extends AbstractApplication {
 
         // create new folder to contain the output
         String packageName = packageType.toLowerCase() + "_" + new SimpleDateFormat("YYYY_MM_dd_HH_mm_ss").format(new Date());
-        if (new File(exportDest).exists()) {
+        if (!isSubmodule && new File(exportDest).exists()) {
             exportDest = exportDest + packageName + "/";
         }
+
         exportDir = new File(exportDest);
+        FileUtils.forceMkdir(exportDir);
 
         if (!isSubmodule) {
             dumpBasicDiagInfo();
@@ -116,14 +119,16 @@ public abstract class AbstractInfoExtractor extends AbstractApplication {
             output.append("\nDump " + packageType + " package locates at: \n" + exportDir.getAbsolutePath());
             output.append("\n========================================");
             logger.info(output.toString());
+            System.out.println(output.toString());
         }
     }
 
     private void dumpBasicDiagInfo() throws IOException {
         try {
             for (String commitSHA1File : COMMIT_SHA1_FILES) {
-                if (new File(commitSHA1File).exists()) {
-                    FileUtils.copyFileToDirectory(new File(KylinConfig.getKylinHome(), commitSHA1File), exportDir);
+                File commitFile = new File(KylinConfig.getKylinHome(), commitSHA1File);
+                if (commitFile.exists()) {
+                    FileUtils.copyFileToDirectory(commitFile, exportDir);
                 }
             }
         } catch (IOException e) {
@@ -131,12 +136,15 @@ public abstract class AbstractInfoExtractor extends AbstractApplication {
         }
 
         String output = KylinVersion.getKylinClientInformation() + "\n";
-        FileUtils.writeStringToFile(new File(exportDir, "kylin_env"), output);
+        FileUtils.writeStringToFile(new File(exportDir, "kylin_env"), output, Charset.defaultCharset());
 
         StringBuilder basicSb = new StringBuilder();
-        basicSb.append("MetaStoreID: ").append(ToolUtil.getHBaseMetaStoreId()).append("\n");
+        basicSb.append("MetaStoreID: ").append(ToolUtil.getMetaStoreId()).append("\n");
         basicSb.append("PackageType: ").append(packageType.toUpperCase()).append("\n");
-        FileUtils.writeStringToFile(new File(exportDir, "info"), basicSb.toString());
+        SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z");
+        basicSb.append("PackageTimestamp: ").append(format.format(new Date())).append("\n");
+        basicSb.append("Host: ").append(ToolUtil.getHostName()).append("\n");
+        FileUtils.writeStringToFile(new File(exportDir, "info"), basicSb.toString(), Charset.defaultCharset());
     }
 
     protected abstract void executeExtract(OptionsHelper optionsHelper, File exportDir) throws Exception;

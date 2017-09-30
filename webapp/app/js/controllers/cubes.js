@@ -35,7 +35,6 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
     $scope.loading = false;
     $scope.action = {};
 
-
     $scope.state = {
       filterAttr: 'create_time', filterReverse: true, reverseColumn: 'create_time',
       dimensionFilter: '', measureFilter: ''
@@ -80,43 +79,6 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
 
       return CubeList.list(queryParam).then(function (resp) {
         angular.forEach($scope.cubeList.cubes,function(cube,index){
-          cube.streaming = false;
-          CubeDescService.query({cube_name: cube.name}, {}, function (detail) {
-            if (detail.length > 0 && detail[0].hasOwnProperty("name")) {
-              cube.detail = detail[0];
-              ModelService.list({projectName:$scope.projectModel.selectedProject,modelName:cube.detail.model_name}, function (_models) {
-                if(_models && _models.length){
-                  for(var i=0;i<=_models.length;i++){
-                    if(_models[i].name == cube.detail.model_name){
-                      cube.model = _models[i];
-                      var factTable = cube.model.fact_table;
-                      TableService.get({tableName:factTable},function(table){
-                        if(table && table.source_type == 1){
-                          cube.streaming = true;
-                        }
-                      })
-                      break;
-                    }
-                  }
-                }
-
-              })
-              //cube.model = modelsManager.getModel(cube.detail.model_name);
-
-              defer.resolve(cube.detail);
-
-            } else {
-              SweetAlert.swal('Oops...', "No cube detail info loaded.", 'error');
-            }
-          }, function (e) {
-            if (e.data && e.data.exception) {
-              var message = e.data.exception;
-              var msg = !!(message) ? message : 'Failed to take action.';
-              SweetAlert.swal('Oops...', msg, 'error');
-            } else {
-              SweetAlert.swal('Oops...', "Failed to take action.", 'error');
-            }
-          });
         })
 
         $scope.loading = false;
@@ -185,7 +147,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
     };
 
 //    Cube Action
-    $scope.enable = function (cube, cubeIndex) {
+    $scope.enable = function (cube) {
       SweetAlert.swal({
         title: '',
         text: 'Are you sure to enable the cube? Please note: if cube schema is changed in the disabled period, all segments of the cube will be discarded due to data and schema mismatch.',
@@ -203,7 +165,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
             loadingRequest.hide();
             $scope.refreshCube(cube).then(function(_cube){
               if(_cube && _cube.name){
-                $scope.cubeList.cubes[cubeIndex] = _cube;
+                $scope.cubeList.cubes[$scope.cubeList.cubes.indexOf(cube)] = _cube;
               }
             });
             SweetAlert.swal('Success!', 'Enable job was submitted successfully', 'success');
@@ -222,7 +184,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
       });
     };
 
-    $scope.purge = function (cube, cubeIndex) {
+    $scope.purge = function (cube) {
       SweetAlert.swal({
         title: '',
         text: 'Are you sure to purge the cube? ',
@@ -239,9 +201,9 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
 
             loadingRequest.hide();
             $scope.refreshCube(cube).then(function(_cube){
-              if(_cube && _cube.name){
-                $scope.cubeList.cubes[cubeIndex] = _cube;
-              }
+             if(_cube && _cube.name){
+                $scope.cubeList.cubes[$scope.cubeList.cubes.indexOf(cube)] = _cube;
+             }
             });
             SweetAlert.swal('Success!', 'Purge job was submitted successfully', 'success');
           },function(e){
@@ -258,7 +220,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
       });
     }
 
-    $scope.disable = function (cube, cubeIndex) {
+    $scope.disable = function (cube) {
 
       SweetAlert.swal({
         title: '',
@@ -277,7 +239,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
             loadingRequest.hide();
             $scope.refreshCube(cube).then(function(_cube){
               if(_cube && _cube.name){
-                $scope.cubeList.cubes[cubeIndex] = _cube;
+                $scope.cubeList.cubes[$scope.cubeList.cubes.indexOf(cube)] = _cube;
               }
             });
             SweetAlert.swal('Success!', 'Disable job was submitted successfully', 'success');
@@ -297,9 +259,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
       });
     };
 
-
-
-    $scope.dropCube = function (cube, cubeIndex) {
+    $scope.dropCube = function (cube) {
 
       SweetAlert.swal({
         title: '',
@@ -316,7 +276,7 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
           CubeService.drop({cubeId: cube.name}, {}, function (result) {
             loadingRequest.hide();
             SweetAlert.swal('Success!', 'Cube drop is done successfully', 'success');
-            $scope.cubeList.cubes.splice(cubeIndex,1);
+            $scope.cubeList.cubes.splice($scope.cubeList.cubes.indexOf(cube),1);
           },function(e){
 
             loadingRequest.hide();
@@ -333,119 +293,164 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
       });
     };
 
-    $scope.startJobSubmit = function (cube, cubeIndex) {
-      $scope.loadDetail(cube);
-      // for streaming cube build tip
-      if(cube.streaming){
-        $modal.open({
-          templateUrl: 'streamingBuild.html',
-          controller: streamingBuildCtrl,
-          resolve: {
+    $scope.startJobSubmit = function (cube) {
+
+      $scope.loadDetail(cube).then(function () {
+        $scope.metaModel={
+          model:cube.model
+        };
+
+        TableService.get({pro:cube.model.project, tableName:$scope.metaModel.model.fact_table},function(table){
+          if(table && table.source_type == 1){
+            cube.streaming = true;
           }
-        });
-        return;
-      }
+          // for streaming cube build tip
+          if(cube.streaming){
+            SweetAlert.swal({
+              title: '',
+              text: "Are you sure to start the build?",
+              type: '',
+              showCancelButton: true,
+              confirmButtonColor: '#DD6B55',
+              confirmButtonText: "Yes",
+              closeOnConfirm: true
+            }, function(isConfirm) {
+              if(isConfirm){
+                loadingRequest.show();
+                CubeService.rebuildStreamingCube(
+                  {
+                    cubeId: cube.name
+                  },
+                  {
+                    sourceOffsetStart:0,
+                    sourceOffsetEnd:'9223372036854775807',
+                    buildType:'BUILD'
+                  }, function (job) {
+                    loadingRequest.hide();
+                    SweetAlert.swal('Success!', 'Rebuild job was submitted successfully', 'success');
+                  },function(e){
 
-      $scope.metaModel={
-        model:modelsManager.getModelByCube(cube.name)
-      }
-      if ($scope.metaModel.model.name) {
-        if ($scope.metaModel.model.partition_desc.partition_date_column) {
-          $modal.open({
-            templateUrl: 'jobSubmit.html',
-            controller: jobSubmitCtrl,
-            resolve: {
-              cube: function () {
-                return cube;
-              },
-              metaModel:function(){
-                return $scope.metaModel;
-              },
-              buildType: function () {
-                return 'BUILD';
-              },
-              scope:function(){
-                return $scope;
-              },
-              cubeIndex:function(){
-                return cubeIndex;
+                    loadingRequest.hide();
+                    if(e.data&& e.data.exception){
+                      var message =e.data.exception;
+                      var msg = !!(message) ? message : 'Failed to take action.';
+                      SweetAlert.swal('Oops...', msg, 'error');
+                    }else{
+                      SweetAlert.swal('Oops...', "Failed to take action.", 'error');
+                    }
+                  });
               }
-            }
-          });
-        }
-        else {
+            })
+            return;
+          }
 
-          SweetAlert.swal({
-            title: '',
-            text: "Are you sure to start the build ?",
-            type: '',
-            showCancelButton: true,
-            confirmButtonColor: '#DD6B55',
-            confirmButtonText: "Yes",
-            closeOnConfirm: true
-          }, function(isConfirm) {
-            if(isConfirm){
+          //for batch cube build tip
+          if ($scope.metaModel.model.name) {
 
-              loadingRequest.show();
-              CubeService.rebuildCube(
-                {
-                  cubeId: cube.name
-                },
-                {
-                  buildType: 'BUILD',
-                  startTime: 0,
-                  endTime: 0
-                }, function (job) {
-
-                  loadingRequest.hide();
-                  SweetAlert.swal('Success!', 'Rebuild job was submitted successfully', 'success');
-                },function(e){
-
-                  loadingRequest.hide();
-                  if(e.data&& e.data.exception){
-                    var message =e.data.exception;
-                    var msg = !!(message) ? message : 'Failed to take action.';
-                    SweetAlert.swal('Oops...', msg, 'error');
-                  }else{
-                    SweetAlert.swal('Oops...', "Failed to take action.", 'error');
+            //for partition cube build tip
+            if ($scope.metaModel.model.partition_desc.partition_date_column) {
+              $modal.open({
+                templateUrl: 'jobSubmit.html',
+                controller: jobSubmitCtrl,
+                resolve: {
+                  cube: function () {
+                    return cube;
+                  },
+                  metaModel:function(){
+                    return $scope.metaModel;
+                  },
+                  buildType: function () {
+                    return 'BUILD';
+                  },
+                  scope:function(){
+                    return $scope;
                   }
-                });
+                }
+              });
             }
 
-          });
-        }
-      }
+            //for not partition cube build tip
+            else {
+              SweetAlert.swal({
+                title: '',
+                text: "Are you sure to start the build ?",
+                type: '',
+                showCancelButton: true,
+                confirmButtonColor: '#DD6B55',
+                confirmButtonText: "Yes",
+                closeOnConfirm: true
+              }, function(isConfirm) {
+                if(isConfirm){
+
+                  loadingRequest.show();
+                  CubeService.rebuildCube(
+                    {
+                      cubeId: cube.name
+                    },
+                    {
+                      buildType: 'BUILD',
+                      startTime: 0,
+                      endTime: 0
+                    }, function (job) {
+
+                      loadingRequest.hide();
+                      SweetAlert.swal('Success!', 'Rebuild job was submitted successfully', 'success');
+                    },function(e){
+
+                      loadingRequest.hide();
+                      if(e.data&& e.data.exception){
+                        var message =e.data.exception;
+                        var msg = !!(message) ? message : 'Failed to take action.';
+                        SweetAlert.swal('Oops...', msg, 'error');
+                      }else{
+                        SweetAlert.swal('Oops...', "Failed to take action.", 'error');
+                      }
+                    });
+                }
+
+              });
+            }
+          }
+        })
+      })
+
     };
 
-    $scope.startRefresh = function (cube, cubeIndex) {
-      $scope.metaModel={
-        model:modelsManager.getModelByCube(cube.name)
-      };
-      $modal.open({
-        templateUrl: 'jobRefresh.html',
-        controller: jobSubmitCtrl,
-        resolve: {
-          cube: function () {
-            return cube;
-          },
-          metaModel:function(){
-            return $scope.metaModel;
-          },
-          buildType: function () {
-            return 'REFRESH';
-          },
-          scope:function(){
-            return $scope;
-          },
-          cubeIndex:function(){
-            return cubeIndex;
+    $scope.startRefresh = function (cube) {
+
+      $scope.loadDetail(cube).then(function () {
+        $scope.metaModel={
+          model:cube.model
+        };
+        $modal.open({
+          templateUrl: 'jobRefresh.html',
+          controller: jobSubmitCtrl,
+          resolve: {
+            cube: function () {
+              return cube;
+            },
+            metaModel:function(){
+              return $scope.metaModel;
+            },
+            buildType: function () {
+              return 'REFRESH';
+            },
+            scope:function(){
+              return $scope;
+            }
           }
+        });
         }
-      });
+      )
 
     };
 
     $scope.cloneCube = function(cube){
+      if(!$scope.projectModel.selectedProject){
+        SweetAlert.swal('Oops...', "Please choose project before clone.", 'info');
+        return;
+      }
+
       $scope.loadDetail(cube).then(function () {
         $modal.open({
           templateUrl: 'cubeClone.html',
@@ -464,31 +469,30 @@ KylinApp.controller('CubesCtrl', function ($scope, $q, $routeParams, $location, 
     $scope.cubeEdit = function (cube) {
       $location.path("cubes/edit/" + cube.name);
     }
-    $scope.startMerge = function (cube, cubeIndex) {
-      $scope.metaModel={
-        model:modelsManager.getModelByCube(cube.name)
-      };
-      $modal.open({
-        templateUrl: 'jobMerge.html',
-        controller: jobSubmitCtrl,
-        resolve: {
-          cube: function () {
-            return cube;
-          },
-          metaModel:function(){
-            return $scope.metaModel;
-          },
-          buildType: function () {
-            return 'MERGE';
-          },
-          scope:function(){
-            return $scope;
-          },
-          cubeIndex:function(){
-            return cubeIndex;
+    $scope.startMerge = function (cube) {
+      $scope.loadDetail(cube).then(function () {
+        $scope.metaModel={
+          model:cube.model
+        };
+        $modal.open({
+          templateUrl: 'jobMerge.html',
+          controller: jobSubmitCtrl,
+          resolve: {
+            cube: function () {
+              return cube;
+            },
+            metaModel:function(){
+              return $scope.metaModel;
+            },
+            buildType: function () {
+              return 'MERGE';
+            },
+            scope:function(){
+              return $scope;
+            }
           }
-        }
-      });
+        });
+      })
     }
   });
 
@@ -550,7 +554,7 @@ var cubeCloneCtrl = function ($scope, $modalInstance, CubeService, MessageServic
 }
 
 
-var jobSubmitCtrl = function ($scope, $modalInstance, CubeService, MessageService, $location, cube, metaModel, buildType, SweetAlert, loadingRequest, scope, cubeIndex, CubeList) {
+var jobSubmitCtrl = function ($scope, $modalInstance, CubeService, MessageService, $location, cube, metaModel, buildType, SweetAlert, loadingRequest, scope, CubeList,$filter) {
   $scope.cubeList = CubeList;
   $scope.cube = cube;
   $scope.metaModel = metaModel;
@@ -560,7 +564,13 @@ var jobSubmitCtrl = function ($scope, $modalInstance, CubeService, MessageServic
     endTime: 0
   };
   $scope.message = "";
-
+  var startTime;
+  if(cube.segments.length == 0){
+    startTime = (!!cube.detail.partition_date_start)?cube.detail.partition_date_start:0;
+  }else{
+    startTime = cube.segments[cube.segments.length-1].date_range_end;
+  }
+  $scope.jobBuildRequest.startTime=startTime;
   $scope.rebuild = function () {
 
     $scope.message = null;
@@ -578,7 +588,7 @@ var jobSubmitCtrl = function ($scope, $modalInstance, CubeService, MessageServic
       $modalInstance.dismiss('cancel');
       SweetAlert.swal('Success!', 'Rebuild job was submitted successfully', 'success');
       scope.refreshCube(cube).then(function(_cube){
-          $scope.cubeList.cubes[cubeIndex] = _cube;
+          $scope.cubeList.cubes[$scope.cubeList.cubes.indexOf(cube)] = _cube;
         });
     }, function (e) {
 
@@ -652,7 +662,7 @@ var jobSubmitCtrl = function ($scope, $modalInstance, CubeService, MessageServic
 
 var streamingBuildCtrl = function ($scope, $modalInstance,kylinConfig) {
   $scope.kylinConfig = kylinConfig;
-  var streamingGuildeUrl = kylinConfig.getProperty("kylin.web.streaming.guide");
+  var streamingGuildeUrl = kylinConfig.getProperty("kylin.web.link-streaming-guide");
   $scope.streamingBuildUrl = streamingGuildeUrl?streamingGuildeUrl:"http://kylin.apache.org/";
 
   $scope.cancel = function () {

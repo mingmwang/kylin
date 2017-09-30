@@ -18,21 +18,31 @@
 
 package org.apache.kylin.cube;
 
-import java.util.ArrayList;
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.KylinConfigExt;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.CompressionUtils;
+import org.apache.kylin.common.util.JsonUtil;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
+import org.apache.kylin.cube.cuboid.TreeCuboidScheduler;
 import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.IBuildable;
-import org.apache.kylin.metadata.model.LookupDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
 import org.apache.kylin.metadata.model.SegmentStatusEnum;
-import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.Segments;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
 import org.apache.kylin.metadata.realization.CapabilityResult;
 import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
 import org.apache.kylin.metadata.realization.IRealization;
@@ -45,15 +55,16 @@ import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.google.common.base.Objects;
 import com.google.common.collect.Lists;
 
 @SuppressWarnings("serial")
 @JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
 public class CubeInstance extends RootPersistentEntity implements IRealization, IBuildable {
-    private static final int COST_WEIGHT_MEASURE = 1;
-    private static final int COST_WEIGHT_DIMENSION = 10;
-    private static final int COST_WEIGHT_INNER_JOIN = 100;
+    public static final int COST_WEIGHT_MEASURE = 1;
+    public static final int COST_WEIGHT_DIMENSION = 10;
+    public static final int COST_WEIGHT_INNER_JOIN = 100;
 
     public static CubeInstance create(String cubeName, CubeDesc cubeDesc) {
         CubeInstance cubeInstance = new CubeInstance();
@@ -62,7 +73,7 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
         cubeInstance.setName(cubeName);
         cubeInstance.setDescName(cubeDesc.getName());
         cubeInstance.setCreateTimeUTC(System.currentTimeMillis());
-        cubeInstance.setSegments(new ArrayList<CubeSegment>());
+        cubeInstance.setSegments(new Segments<CubeSegment>());
         cubeInstance.setStatus(RealizationStatusEnum.DISABLED);
         cubeInstance.updateRandomUuid();
 
@@ -85,39 +96,52 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
 
     @JsonManagedReference
     @JsonProperty("segments")
-    private List<CubeSegment> segments = new ArrayList<CubeSegment>();
+    private Segments<CubeSegment> segments = new Segments<CubeSegment>();
 
     @JsonProperty("create_time_utc")
     private long createTimeUTC;
+
+    @JsonProperty("cuboid_bytes")
+    private byte[] cuboidBytes;
+
+    @JsonProperty("cuboid_bytes_recommend")
+    private byte[] cuboidBytesRecommend;
+
+    @JsonProperty("cuboid_last_optimized")
+    private long cuboidLastOptimized;
+
+    // cuboid scheduler lazy built
+    transient private CuboidScheduler cuboidScheduler;
 
     // default constructor for jackson
     public CubeInstance() {
     }
 
-    public List<CubeSegment> getBuildingSegments() {
-        List<CubeSegment> buildingSegments = new ArrayList<CubeSegment>();
-        if (null != segments) {
-            for (CubeSegment segment : segments) {
-                if (SegmentStatusEnum.NEW == segment.getStatus() || SegmentStatusEnum.READY_PENDING == segment.getStatus()) {
-                    buildingSegments.add(segment);
+    public CuboidScheduler getCuboidScheduler() {
+        if (cuboidScheduler != null)
+            return cuboidScheduler;
+
+        synchronized (this) {
+            if (cuboidScheduler == null) {
+                Map<Long, Long> cuboidsWithRowCnt = getCuboids();
+                if (cuboidsWithRowCnt == null) {
+                    cuboidScheduler = getDescriptor().getInitialCuboidScheduler();
+                } else {
+                    cuboidScheduler = new TreeCuboidScheduler(getDescriptor(),
+                            Lists.newArrayList(cuboidsWithRowCnt.keySet()),
+                            new TreeCuboidScheduler.CuboidCostComparator(cuboidsWithRowCnt));
                 }
             }
         }
-
-        return buildingSegments;
+        return cuboidScheduler;
     }
 
-    public List<CubeSegment> getMergingSegments(CubeSegment mergedSegment) {
-        List<CubeSegment> mergingSegments = new ArrayList<CubeSegment>();
-        if (null != this.segments) {
-            for (CubeSegment segment : this.segments) {
-                if (!mergedSegment.equals(segment) //
-                        && mergedSegment.getDateRangeStart() <= segment.getDateRangeStart() && mergedSegment.getDateRangeEnd() >= segment.getDateRangeEnd()) {
-                    mergingSegments.add(segment);
-                }
-            }
-        }
-        return mergingSegments;
+    public Segments<CubeSegment> getBuildingSegments() {
+        return segments.getBuildingSegments();
+    }
+
+    public Segments<CubeSegment> getMergingSegments(CubeSegment mergedSegment) {
+        return segments.getMergingSegments(mergedSegment);
     }
 
     public CubeDesc getDescriptor() {
@@ -125,7 +149,7 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
     }
 
     @Override
-    public DataModelDesc getDataModelDesc() {
+    public DataModelDesc getModel() {
         CubeDesc cubeDesc = this.getDescriptor();
         if (cubeDesc != null) {
             return cubeDesc.getModel();
@@ -136,6 +160,14 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
 
     public boolean isReady() {
         return getStatus() == RealizationStatusEnum.READY;
+    }
+
+    // if cube is not online and has no data or any building job, we allow its descriptor to be
+    // in a temporary broken state, so that user can edit and fix it. Broken state is often due to
+    // schema changes at source.
+    public boolean allowBrokenDescriptor() {
+        return (getStatus() == RealizationStatusEnum.DISABLED || getStatus() == RealizationStatusEnum.DESCBROKEN)
+                && segments.isEmpty();
     }
 
     public String getResourcePath() {
@@ -186,12 +218,17 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
         return sizeRecordSize;
     }
 
+    @Override
     public KylinConfig getConfig() {
         return config;
     }
 
     void setConfig(KylinConfigExt config) {
         this.config = config;
+    }
+
+    public String getRootFactTable() {
+        return getModel().getRootFactTable().getTableIdentity();
     }
 
     @Override
@@ -202,15 +239,6 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
     @Override
     public String getCanonicalName() {
         return getType() + "[name=" + name + "]";
-    }
-
-    @Override
-    public String getFactTable() {
-        return getDescriptor().getFactTable();
-    }
-
-    public TableDesc getFactTableDesc() {
-        return getDescriptor().getFactTableDesc();
     }
 
     @Override
@@ -231,10 +259,6 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
     }
 
     public String getDescName() {
-        return descName.toUpperCase();
-    }
-
-    public String getOriginDescName() {
         return descName;
     }
 
@@ -259,53 +283,30 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
     }
 
     public CubeSegment getFirstSegment() {
-        if (this.segments == null || this.segments.size() == 0) {
-            return null;
-        } else {
-            return this.segments.get(0);
-        }
+        return segments.getFirstSegment();
     }
 
     public CubeSegment getLatestReadySegment() {
-        CubeSegment latest = null;
-        for (int i = segments.size() - 1; i >= 0; i--) {
-            CubeSegment seg = segments.get(i);
-            if (seg.getStatus() != SegmentStatusEnum.READY)
-                continue;
-            if (latest == null || latest.getDateRangeEnd() < seg.getDateRangeEnd()) {
-                latest = seg;
-            }
-        }
-        return latest;
+        return segments.getLatestReadySegment();
     }
 
-    public List<CubeSegment> getSegments() {
+    public CubeSegment getLatestBuiltSegment() {
+        return segments.getLatestBuiltSegment();
+    }
+
+    public Segments<CubeSegment> getSegments() {
         return segments;
     }
 
-    public List<CubeSegment> getSegments(SegmentStatusEnum status) {
-        List<CubeSegment> result = new ArrayList<CubeSegment>();
-
-        for (CubeSegment segment : segments) {
-            if (segment.getStatus() == status) {
-                result.add(segment);
-            }
-        }
-
-        return result;
+    public Segments<CubeSegment> getSegments(SegmentStatusEnum status) {
+        return segments.getSegments(status);
     }
 
     public CubeSegment getSegment(String name, SegmentStatusEnum status) {
-        for (CubeSegment segment : segments) {
-            if ((null != segment.getName() && segment.getName().equals(name)) && (status == null || segment.getStatus() == status)) {
-                return segment;
-            }
-        }
-
-        return null;
+        return segments.getSegment(name, status);
     }
 
-    public void setSegments(List<CubeSegment> segments) {
+    public void setSegments(Segments segments) {
         this.segments = segments;
     }
 
@@ -326,6 +327,79 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
         this.createTimeUTC = createTimeUTC;
     }
 
+    public Map<Long, Long> getCuboids() {
+        if (cuboidBytes == null)
+            return null;
+        byte[] uncompressed;
+        try {
+            uncompressed = CompressionUtils.decompress(cuboidBytes);
+            String str = new String(uncompressed, "UTF-8");
+            TypeReference<Map<Long, Long>> typeRef = new TypeReference<Map<Long, Long>>() {
+            };
+            Map<Long, Long> cuboids = JsonUtil.readValue(str, typeRef);
+            return cuboids.isEmpty() ? null : cuboids;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void setCuboids(Map<Long, Long> cuboids) {
+        if (cuboids == null)
+            return;
+        if (cuboids.isEmpty()) {
+            cuboidBytes = null;
+            return;
+        }
+
+        try {
+            String str = JsonUtil.writeValueAsString(cuboids);
+            byte[] compressed = CompressionUtils.compress(str.getBytes("UTF-8"));
+            cuboidBytes = compressed;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Set<Long> getCuboidsRecommend() {
+        if (cuboidBytesRecommend == null)
+            return null;
+        byte[] uncompressed;
+        try {
+            uncompressed = CompressionUtils.decompress(cuboidBytesRecommend);
+            String str = new String(uncompressed, "UTF-8");
+            TypeReference<Set<Long>> typeRef = new TypeReference<Set<Long>>() {
+            };
+            Set<Long> cuboids = JsonUtil.readValue(str, typeRef);
+            return cuboids.isEmpty() ? null : cuboids;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public void setCuboidsRecommend(Set<Long> cuboids) {
+        if (cuboids == null)
+            return;
+        if (cuboids.isEmpty()) {
+            cuboidBytesRecommend = null;
+            return;
+        }
+        try {
+            String str = JsonUtil.writeValueAsString(cuboids);
+            byte[] compressed = CompressionUtils.compress(str.getBytes("UTF-8"));
+            cuboidBytesRecommend = compressed;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    /**
+     * Get cuboid level count except base cuboid
+     * @return
+     */
+    public int getBuildLevel() {
+        return getCuboidScheduler().getCuboidsByLayer().size() - 1;
+    }
+
     @Override
     public CapabilityResult isCapable(SQLDigest digest) {
         CapabilityResult result = CubeCapabilityChecker.check(this, digest);
@@ -340,15 +414,15 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
         return result;
     }
 
-    private int getCost(SQLDigest digest) {
+    public int getCost(SQLDigest digest) {
         int calculatedCost = cost;
 
         //the number of dimensions is not as accurate as number of row key cols
         calculatedCost += getRowKeyColumnCount() * COST_WEIGHT_DIMENSION + getMeasures().size() * COST_WEIGHT_MEASURE;
 
-        for (LookupDesc lookupDesc : this.getDescriptor().getModel().getLookups()) {
+        for (JoinTableDesc joinTable : this.getModel().getJoinTables()) {
             // more tables, more cost
-            if ("inner".equals(lookupDesc.getJoin().getType())) {
+            if (joinTable.getJoin().isInnerJoin()) {
                 // inner join cost is bigger than left join, as it will filter some records
                 calculatedCost += COST_WEIGHT_INNER_JOIN;
             }
@@ -363,40 +437,28 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
     }
 
     @Override
-    public List<TblColRef> getAllColumns() {
-        return Lists.newArrayList(getDescriptor().listAllColumns());
+    public Set<TblColRef> getAllColumns() {
+        return getDescriptor().listAllColumns();
+    }
+
+    @Override
+    public Set<ColumnDesc> getAllColumnDescs() {
+        return getDescriptor().listAllColumnDescs();
     }
 
     @Override
     public long getDateRangeStart() {
-        List<CubeSegment> readySegs = getSegments(SegmentStatusEnum.READY);
-
-        long startTime = Long.MAX_VALUE;
-        for (CubeSegment seg : readySegs) {
-            if (seg.getDateRangeStart() < startTime)
-                startTime = seg.getDateRangeStart();
-        }
-
-        return startTime;
+        return segments.getTSStart();
     }
 
     @Override
     public long getDateRangeEnd() {
-
-        List<CubeSegment> readySegs = getSegments(SegmentStatusEnum.READY);
-
-        long endTime = 0;
-        for (CubeSegment seg : readySegs) {
-            if (seg.getDateRangeEnd() > endTime)
-                endTime = seg.getDateRangeEnd();
-        }
-
-        return endTime;
+        return segments.getTSEnd();
     }
 
     @Override
-    public String getModelName() {
-        return this.getDescriptor().getModelName();
+    public boolean supportsLimitPushDown() {
+        return getDescriptor().supportsLimitPushDown();
     }
 
     public int getRowKeyColumnCount() {
@@ -412,12 +474,38 @@ public class CubeInstance extends RootPersistentEntity implements IRealization, 
         if (!this.getDescriptor().getModel().getPartitionDesc().isPartitioned())
             return false;
 
-        return this.getDescriptor().getAutoMergeTimeRanges() != null && this.getDescriptor().getAutoMergeTimeRanges().length > 0;
+        return this.getDescriptor().getAutoMergeTimeRanges() != null
+                && this.getDescriptor().getAutoMergeTimeRanges().length > 0;
+    }
+
+    public SegmentRange autoMergeCubeSegments() throws IOException {
+        return segments.autoMergeCubeSegments(needAutoMerge(), getName(), getDescriptor().getAutoMergeTimeRanges());
+    }
+
+    public Segments calculateToBeSegments(CubeSegment newSegment) {
+        return segments.calculateToBeSegments(newSegment);
+    }
+
+    public CubeSegment getLastSegment() {
+        List<CubeSegment> existing = getSegments();
+        if (existing.isEmpty()) {
+            return null;
+        } else {
+            return existing.get(existing.size() - 1);
+        }
+    }
+
+    public String getProject() {
+        return getDescriptor().getProject();
+    }
+
+    public ProjectInstance getProjectInstance() {
+        return ProjectManager.getInstance(getConfig()).getProject(getProject());
     }
 
     @Override
     public int getSourceType() {
-        return getFactTableDesc().getSourceType();
+        return getModel().getRootFactTable().getTableDesc().getSourceType();
     }
 
     @Override

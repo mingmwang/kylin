@@ -33,12 +33,12 @@ public class RowKeyDistributionCheckerReducer extends KylinReducer<Text, LongWri
     LongWritable outputKey = new LongWritable(0L);
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
     }
 
     @Override
-    public void reduce(Text key, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
+    public void doReduce(Text key, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
 
         long length = 0;
         for (LongWritable v : values) {

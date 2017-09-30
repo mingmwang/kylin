@@ -18,6 +18,7 @@
 
 package org.apache.kylin.rest.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import org.apache.kylin.common.persistence.AclEntity;
 import org.apache.kylin.rest.response.AccessEntryResponse;
 import org.apache.kylin.rest.security.AclPermission;
@@ -25,12 +26,11 @@ import org.apache.kylin.rest.security.AclPermissionFactory;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.acls.domain.PrincipalSid;
 import org.springframework.security.acls.model.AccessControlEntry;
 import org.springframework.security.acls.model.Acl;
 import org.springframework.security.acls.model.Sid;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
 
 /**
  * @author xduo
@@ -38,6 +38,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 public class AccessServiceTest extends ServiceTestBase {
 
     @Autowired
+    @Qualifier("accessService")
     AccessService accessService;
 
     @Test

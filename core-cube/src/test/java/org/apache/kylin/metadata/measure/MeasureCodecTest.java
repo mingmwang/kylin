@@ -6,9 +6,9 @@
  * to you under the Apache License, Version 2.0 (the
  * "License"); you may not use this file except in compliance
  * with the License.  You may obtain a copy of the License at
- * 
+ *
  *     http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -18,51 +18,58 @@
 
 package org.apache.kylin.metadata.measure;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 
-import org.apache.kylin.measure.hllc.HyperLogLogPlusCounter;
-import org.apache.kylin.cube.kv.RowConstants;
-import org.apache.kylin.measure.MeasureCodec;
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
+import org.apache.kylin.measure.BufferedMeasureCodec;
 import org.apache.kylin.measure.bitmap.BitmapCounter;
-import org.apache.kylin.metadata.datatype.DoubleMutable;
-import org.apache.kylin.metadata.datatype.LongMutable;
+import org.apache.kylin.measure.bitmap.RoaringBitmapCounterFactory;
+import org.apache.kylin.measure.hllc.HLLCounter;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 /**
- * 
+ *
  */
-public class MeasureCodecTest {
-    
+public class MeasureCodecTest extends LocalFileMetadataTestCase {
+    @BeforeClass
+    public static void setUp() throws Exception {
+        staticCreateTestMetadata();
+    }
+
+    @AfterClass
+    public static void after() throws Exception {
+        cleanAfterClass();
+    }
+
     @Test
     public void basicTest() {
-        MeasureDesc descs[] = new MeasureDesc[] { measure("double"), measure("long"), measure
-            ("decimal"), measure("HLLC16"), measure("bitmap") };
-        MeasureCodec codec = new MeasureCodec(descs);
+        MeasureDesc[] descs = new MeasureDesc[] { measure("double"), measure("long"), measure("decimal"), measure("HLLC16"), measure("bitmap") };
+        BufferedMeasureCodec codec = new BufferedMeasureCodec(descs);
 
-        DoubleMutable d = new DoubleMutable(1.0);
-        LongMutable l = new LongMutable(2);
+        Double d = new Double(1.0);
+        Long l = new Long(2);
         BigDecimal b = new BigDecimal("333.1234");
-        HyperLogLogPlusCounter hllc = new HyperLogLogPlusCounter(16);
+        HLLCounter hllc = new HLLCounter(16);
         hllc.add("1234567");
         hllc.add("abcdefg");
-        BitmapCounter bitmap = new BitmapCounter();
+        BitmapCounter bitmap = RoaringBitmapCounterFactory.INSTANCE.newBitmap();
         bitmap.add(123);
         bitmap.add(45678);
-        bitmap.add(Integer.MAX_VALUE-10);
-        Object values[] = new Object[] { d, l, b, hllc, bitmap };
+        bitmap.add(Integer.MAX_VALUE - 10);
+        Object[] values = new Object[] { d, l, b, hllc, bitmap };
 
-        ByteBuffer buf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
-
-        codec.encode(values, buf);
+        ByteBuffer buf = codec.encode(values);
         buf.flip();
         System.out.println("size: " + buf.limit());
 
-        Object copy[] = new Object[values.length];
+        Object[] copy = new Object[values.length];
 
         codec.decode(buf, copy);
 
@@ -75,8 +82,7 @@ public class MeasureCodecTest {
 
     private MeasureDesc measure(String returnType) {
         MeasureDesc desc = new MeasureDesc();
-        FunctionDesc func = new FunctionDesc();
-        func.setReturnType(returnType);
+        FunctionDesc func = FunctionDesc.newInstance(null, null, returnType);
         desc.setFunction(func);
         return desc;
     }

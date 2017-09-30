@@ -1,19 +1,21 @@
 /*
- *  Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements. See the NOTICE file distributed with
- *  this work for additional information regarding copyright ownership.
- *  The ASF licenses this file to You under the Apache License, Version 2.0
- *  (the "License"); you may not use this file except in compliance with
- *  the License. You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- */
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
+
 package org.apache.kylin.cube.inmemcubing;
 
 import java.io.IOException;
@@ -30,14 +32,15 @@ import java.util.concurrent.ConcurrentNavigableMap;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.common.util.ImmutableBitSet;
 import org.apache.kylin.common.util.MemoryBudgetController;
-import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
 import org.apache.kylin.gridtable.GTRecord;
-import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.gridtable.GTScanRequestBuilder;
 import org.apache.kylin.gridtable.IGTScanner;
 import org.apache.kylin.measure.MeasureAggregators;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,8 +57,9 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
     private int splitRowThreshold = Integer.MAX_VALUE;
     private int unitRows = 1000;
 
-    public DoggedCubeBuilder(CubeDesc cubeDesc, Map<TblColRef, Dictionary<String>> dictionaryMap) {
-        super(cubeDesc, dictionaryMap);
+    public DoggedCubeBuilder(CuboidScheduler cuboidScheduler, IJoinedFlatTableDesc flatDesc,
+            Map<TblColRef, Dictionary<String>> dictionaryMap) {
+        super(cuboidScheduler, flatDesc, dictionaryMap);
 
         // check memory more often if a single row is big
         if (cubeDesc.hasMemoryHungryMeasures())
@@ -177,6 +181,7 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
                 try {
                     split.join();
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     errors.add(e);
                 }
                 if (split.exception != null)
@@ -218,6 +223,7 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
                 return false;
 
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
         }
@@ -236,6 +242,7 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
                 last.join();
 
             } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
                 throw new RuntimeException(e);
             }
         }
@@ -252,8 +259,8 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
                 return true;
             }
 
-            if (systemAvailMB <= reserveMemoryMB) {
-                logger.info("Split cut due to hitting memory threshold, system avail " + systemAvailMB + " MB <= reserve " + reserveMemoryMB + " MB");
+            if (systemAvailMB <= reserveMemoryMB * 1.5) {
+                logger.info("Split cut due to hitting memory threshold, system avail " + systemAvailMB + " MB <= reserve " + reserveMemoryMB + "*1.5 MB");
                 return true;
             }
 
@@ -270,7 +277,7 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
         RuntimeException exception;
 
         public SplitThread() {
-            this.builder = new InMemCubeBuilder(cubeDesc, dictionaryMap);
+            this.builder = new InMemCubeBuilder(cuboidScheduler, flatDesc, dictionaryMap);
             this.builder.setConcurrentThreads(taskThreadCount);
             this.builder.setReserveMemoryMB(reserveMemoryMB);
         }
@@ -399,7 +406,7 @@ public class DoggedCubeBuilder extends AbstractInMemCubeBuilder {
                 if (cuboidIterator.hasNext()) {
                     CuboidResult cuboid = cuboidIterator.next();
                     currentCuboidId = cuboid.cuboidId;
-                    scanner = cuboid.table.scan(new GTScanRequest(cuboid.table.getInfo(), null, null, null));
+                    scanner = cuboid.table.scan(new GTScanRequestBuilder().setInfo(cuboid.table.getInfo()).setRanges(null).setDimensions(null).setFilterPushDown(null).createGTScanRequest());
                     recordIterator = scanner.iterator();
                 } else {
                     return false;

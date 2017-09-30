@@ -25,7 +25,7 @@ import java.util.List;
 import org.apache.commons.lang.StringUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.kylin.engine.mr.HadoopUtil;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.engine.mr.JobBuilderSupport;
 import org.apache.kylin.job.engine.JobEngineConfig;
 import org.apache.kylin.job.exception.ExecuteException;
@@ -33,6 +33,8 @@ import org.apache.kylin.job.execution.AbstractExecutable;
 import org.apache.kylin.job.execution.ExecutableContext;
 import org.apache.kylin.job.execution.ExecuteResult;
 import org.apache.kylin.storage.hbase.HBaseConnection;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 
@@ -40,6 +42,8 @@ import com.google.common.collect.Lists;
  * Created by sunyerui on 15/9/17.
  */
 public class HDFSPathGarbageCollectionStep extends AbstractExecutable {
+
+    private static final Logger logger = LoggerFactory.getLogger(HDFSPathGarbageCollectionStep.class);
 
     public static final String TO_DELETE_PATHS = "toDeletePaths";
     private StringBuffer output;
@@ -55,8 +59,8 @@ public class HDFSPathGarbageCollectionStep extends AbstractExecutable {
         try {
             config = new JobEngineConfig(context.getConfig());
             List<String> toDeletePaths = getDeletePaths();
-            dropHdfsPathOnCluster(toDeletePaths, FileSystem.get(HadoopUtil.getCurrentConfiguration()));
-            
+            dropHdfsPathOnCluster(toDeletePaths, HadoopUtil.getWorkingFileSystem());
+
             if (StringUtils.isNotEmpty(context.getConfig().getHBaseClusterFs())) {
                 dropHdfsPathOnCluster(toDeletePaths, FileSystem.get(HBaseConnection.getCurrentHBaseConfiguration()));
             }
@@ -77,19 +81,20 @@ public class HDFSPathGarbageCollectionStep extends AbstractExecutable {
                 if (path.endsWith("*"))
                     path = path.substring(0, path.length() - 1);
 
-                Path oldPath = new Path(path);
+                Path oldPath = Path.getPathWithoutSchemeAndAuthority(new Path(path));
                 if (fileSystem.exists(oldPath)) {
                     fileSystem.delete(oldPath, true);
-                    logger.debug("HDFS path " + path + " is dropped.");
-                    output.append("HDFS path " + path + " is dropped.\n");
+                    logger.debug("HDFS path " + oldPath + " is dropped.");
+                    output.append("HDFS path " + oldPath + " is dropped.\n");
                 } else {
-                    logger.debug("HDFS path " + path + " not exists.");
-                    output.append("HDFS path " + path + " not exists.\n");
+                    logger.debug("HDFS path " + oldPath + " not exists.");
+                    output.append("HDFS path " + oldPath + " not exists.\n");
                 }
                 // If hbase was deployed on another cluster, the job dir is empty and should be dropped,
                 // because of rowkey_stats and hfile dirs are both dropped.
                 if (fileSystem.listStatus(oldPath.getParent()).length == 0) {
                     Path emptyJobPath = new Path(JobBuilderSupport.getJobWorkingDir(config, getJobId()));
+                    emptyJobPath = Path.getPathWithoutSchemeAndAuthority(emptyJobPath);
                     if (fileSystem.exists(emptyJobPath)) {
                         fileSystem.delete(emptyJobPath, true);
                         logger.debug("HDFS path " + emptyJobPath + " is empty and dropped.");

@@ -22,18 +22,17 @@ import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
+import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import org.apache.kylin.common.util.StringUtil;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 
-import com.fasterxml.jackson.annotation.JsonAutoDetect;
-import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 /**
  */
 @JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
-public class HBaseMappingDesc {
+public class HBaseMappingDesc implements java.io.Serializable {
 
     @JsonProperty("column_family")
     private HBaseColumnFamilyDesc[] columnFamily;
@@ -85,6 +84,24 @@ public class HBaseMappingDesc {
                 c.setQualifier(c.getQualifier().toUpperCase());
                 StringUtil.toUpperCaseArray(c.getMeasureRefs(), c.getMeasureRefs());
             }
+        }
+    }
+
+    public void initAsSeparatedColumns(CubeDesc cubeDesc) {
+        cubeRef = cubeDesc;
+
+        int cfNum = cubeDesc.getMeasures().size();
+        columnFamily = new HBaseColumnFamilyDesc[cfNum];
+
+        for (int i = 0; i < cfNum; i++) {
+            HBaseColumnFamilyDesc cf = new HBaseColumnFamilyDesc();
+            HBaseColumnDesc col = new HBaseColumnDesc();
+            String measureRef = cubeDesc.getMeasures().get(i).getName();
+            col.setMeasureRefs(new String[] { measureRef });
+            col.setQualifier("M");
+            cf.setColumns(new HBaseColumnDesc[] { col });
+            cf.setName("F" + (i + 1));
+            columnFamily[i] = cf;
         }
     }
 

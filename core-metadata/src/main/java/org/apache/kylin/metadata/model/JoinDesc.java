@@ -18,16 +18,19 @@
 
 package org.apache.kylin.metadata.model;
 
+import java.io.Serializable;
 import java.util.Arrays;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Preconditions;
 
 /**
  */
+@SuppressWarnings("serial")
 @JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
-public class JoinDesc {
+public class JoinDesc implements Serializable {
 
     // inner, left, right, outer...
     @JsonProperty("type")
@@ -50,10 +53,18 @@ public class JoinDesc {
         foreignKeyColumns = tt;
     }
 
+    public boolean isInnerJoin() {
+        return "INNER".equalsIgnoreCase(type);
+    }
+    
+    public boolean isLeftJoin() {
+        return "LEFT".equalsIgnoreCase(type);
+    }
+    
     public String getType() {
         return type;
     }
-
+    
     public void setType(String type) {
         this.type = type;
     }
@@ -79,6 +90,7 @@ public class JoinDesc {
     }
 
     public void setPrimaryKeyColumns(TblColRef[] primaryKeyColumns) {
+        checkSameTable(primaryKeyColumns);
         this.primaryKeyColumns = primaryKeyColumns;
     }
 
@@ -87,7 +99,56 @@ public class JoinDesc {
     }
 
     public void setForeignKeyColumns(TblColRef[] foreignKeyColumns) {
+        checkSameTable(primaryKeyColumns);
         this.foreignKeyColumns = foreignKeyColumns;
+    }
+
+    private void checkSameTable(TblColRef[] cols) {
+        if (cols == null || cols.length == 0)
+            return;
+        
+        TableRef tableRef = cols[0].getTableRef();
+        for (int i = 1; i < cols.length; i++)
+            Preconditions.checkState(tableRef == cols[i].getTableRef());
+    }
+
+    public TableRef getPKSide() {
+        return primaryKeyColumns[0].getTableRef();
+    }
+    
+    public TableRef getFKSide() {
+        return foreignKeyColumns[0].getTableRef();
+    }
+
+    public void sortByFK() {
+        Preconditions.checkState(primaryKey.length == foreignKey.length && primaryKey.length == primaryKeyColumns.length && foreignKey.length == foreignKeyColumns.length);
+        boolean cont = true;
+        int n = foreignKey.length;
+        for (int i = 0; i < n - 1 && cont; i++) {
+            cont = false;
+            for (int j = 0; j < n - 1 - i; j++) {
+                int jj = j + 1;
+                if (foreignKey[j].compareTo(foreignKey[jj]) > 0) {
+                    swap(foreignKey, j, jj);
+                    swap(primaryKey, j, jj);
+                    swap(foreignKeyColumns, j, jj);
+                    swap(primaryKeyColumns, j, jj);
+                    cont = true;
+                }
+            }
+        }
+    }
+
+    private void swap(String[] arr, int j, int jj) {
+        String tmp = arr[j];
+        arr[j] = arr[jj];
+        arr[jj] = tmp;
+    }
+    
+    private void swap(TblColRef[] arr, int j, int jj) {
+        TblColRef tmp = arr[j];
+        arr[j] = arr[jj];
+        arr[jj] = tmp;
     }
 
     @Override
@@ -110,9 +171,15 @@ public class JoinDesc {
             return false;
         JoinDesc other = (JoinDesc) obj;
 
-        if (!this.columnsEqualIgnoringOrder(foreignKeyColumns, other.foreignKeyColumns))
+
+        // note pk/fk are sorted, sortByFK()
+        if (!Arrays.equals(foreignKey, other.foreignKey))
             return false;
-        if (!this.columnsEqualIgnoringOrder(primaryKeyColumns, other.primaryKeyColumns))
+        if (!Arrays.equals(primaryKey, other.primaryKey))
+            return false;
+        if (!Arrays.equals(foreignKeyColumns, other.foreignKeyColumns))
+            return false;
+        if (!Arrays.equals(primaryKeyColumns, other.primaryKeyColumns))
             return false;
 
         if (!this.type.equalsIgnoreCase(other.getType()))
@@ -120,11 +187,32 @@ public class JoinDesc {
         return true;
     }
 
-    private boolean columnsEqualIgnoringOrder(TblColRef[] a, TblColRef[] b) {
+    // equals() without alias
+    public boolean matches(JoinDesc other) {
+        if (other == null)
+            return false;
+        
+        if (!this.type.equalsIgnoreCase(other.getType()))
+            return false;
+        
+        // note pk/fk are sorted, sortByFK()
+        if (!this.columnDescEquals(foreignKeyColumns, other.foreignKeyColumns))
+            return false;
+        if (!this.columnDescEquals(primaryKeyColumns, other.primaryKeyColumns))
+            return false;
+        
+        return true;
+    }
+
+    private boolean columnDescEquals(TblColRef[] a, TblColRef[] b) {
         if (a.length != b.length)
             return false;
-
-        return Arrays.asList(a).containsAll(Arrays.asList(b));
+        
+        for (int i = 0; i < a.length; i++) {
+            if (a[i].getColumnDesc().equals(b[i].getColumnDesc()) == false)
+                return false;
+        }
+        return true;
     }
 
     @Override

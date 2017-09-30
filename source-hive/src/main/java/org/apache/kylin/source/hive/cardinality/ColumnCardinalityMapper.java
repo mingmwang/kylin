@@ -20,6 +20,7 @@ package org.apache.kylin.source.hive.cardinality;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
@@ -28,25 +29,25 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.kylin.common.KylinConfig;
-import org.apache.kylin.measure.hllc.HyperLogLogPlusCounter;
 import org.apache.kylin.common.util.Bytes;
-import org.apache.kylin.cube.kv.RowConstants;
 import org.apache.kylin.engine.mr.IMRInput.IMRTableInputFormat;
 import org.apache.kylin.engine.mr.KylinMapper;
 import org.apache.kylin.engine.mr.MRUtil;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
 import org.apache.kylin.engine.mr.common.BatchConstants;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.apache.kylin.measure.hllc.HLLCounter;
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.TableDesc;
 
 /**
  * @author Jack
- * 
+ *
  */
 public class ColumnCardinalityMapper<T> extends KylinMapper<T, Object, IntWritable, BytesWritable> {
 
-    private Map<Integer, HyperLogLogPlusCounter> hllcMap = new HashMap<Integer, HyperLogLogPlusCounter>();
+    private Map<Integer, HLLCounter> hllcMap = new HashMap<Integer, HLLCounter>();
     public static final String DEFAULT_DELIM = ",";
 
     private int counter = 0;
@@ -55,52 +56,54 @@ public class ColumnCardinalityMapper<T> extends KylinMapper<T, Object, IntWritab
     private IMRTableInputFormat tableInputFormat;
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         Configuration conf = context.getConfiguration();
         bindCurrentConfiguration(conf);
         KylinConfig config = AbstractHadoopJob.loadKylinPropsAndMetadata();
 
+        String project = conf.get(BatchConstants.CFG_PROJECT_NAME);
         String tableName = conf.get(BatchConstants.CFG_TABLE_NAME);
-        tableDesc = MetadataManager.getInstance(config).getTableDesc(tableName);
+        tableDesc = MetadataManager.getInstance(config).getTableDesc(tableName, project);
         tableInputFormat = MRUtil.getTableInputFormat(tableDesc);
     }
 
     @Override
-    public void map(T key, Object value, Context context) throws IOException, InterruptedException {
+    public void doMap(T key, Object value, Context context) throws IOException, InterruptedException {
         ColumnDesc[] columns = tableDesc.getColumns();
-        String[] values = tableInputFormat.parseMapperInput(value);
+        Collection<String[]> valuesCollection = tableInputFormat.parseMapperInput(value);
 
-        for (int m = 0; m < columns.length; m++) {
-            String field = columns[m].getName();
-            String fieldValue = values[m];
-            if (fieldValue == null)
-                fieldValue = "NULL";
+        for (String[] values: valuesCollection) {
+            for (int m = 0; m < columns.length; m++) {
+                String field = columns[m].getName();
+                String fieldValue = values[m];
+                if (fieldValue == null)
+                    fieldValue = "NULL";
 
-            if (counter < 5 && m < 10) {
-                System.out.println("Get row " + counter + " column '" + field + "'  value: " + fieldValue);
+                if (counter < 5 && m < 10) {
+                    System.out.println("Get row " + counter + " column '" + field + "'  value: " + fieldValue);
+                }
+
+                getHllc(m).add(Bytes.toBytes(fieldValue.toString()));
             }
 
-            if (fieldValue != null)
-                getHllc(m).add(Bytes.toBytes(fieldValue.toString()));
+            counter++;
         }
-
-        counter++;
     }
 
-    private HyperLogLogPlusCounter getHllc(Integer key) {
+    private HLLCounter getHllc(Integer key) {
         if (!hllcMap.containsKey(key)) {
-            hllcMap.put(key, new HyperLogLogPlusCounter());
+            hllcMap.put(key, new HLLCounter());
         }
         return hllcMap.get(key);
     }
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
+    protected void doCleanup(Context context) throws IOException, InterruptedException {
         Iterator<Integer> it = hllcMap.keySet().iterator();
-        ByteBuffer buf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
+        ByteBuffer buf = ByteBuffer.allocate(BufferedMeasureCodec.DEFAULT_BUFFER_SIZE);
         while (it.hasNext()) {
             int key = it.next();
-            HyperLogLogPlusCounter hllc = hllcMap.get(key);
+            HLLCounter hllc = hllcMap.get(key);
             buf.clear();
             hllc.writeRegisters(buf);
             buf.flip();

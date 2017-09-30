@@ -18,20 +18,32 @@
 
 package org.apache.kylin.metadata.realization;
 
+import java.util.Collection;
 import java.util.List;
 
 import org.apache.kylin.metadata.model.FunctionDesc;
+import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.TblColRef;
 
 import com.google.common.collect.Lists;
 
 public class CapabilityResult {
-    
-    /** Is capable or not */
+
+    /**
+     * Is capable or not
+     */
     public boolean capable;
 
-    /** The smaller the cost, the more capable the realization */
+    /**
+     * The smaller the cost, the more capable the realization
+     */
     public int cost;
-    
+
+    /**
+     * reason of incapable
+     */
+    public IncapableCause incapableCause;
+
     /**
      * Marker objects to indicate all special features
      * (dimension-as-measure, topN etc.) that have influenced the capability check.
@@ -39,14 +51,18 @@ public class CapabilityResult {
     public List<CapabilityInfluence> influences = Lists.newArrayListWithCapacity(1);
 
     public static interface CapabilityInfluence {
-        /** Suggest a multiplier to influence query cost */
+        /**
+         * Suggest a multiplier to influence query cost
+         */
         double suggestCostMultiplier();
+
+        MeasureDesc getInvolvedMeasure();
     }
-    
+
     public static class DimensionAsMeasure implements CapabilityInfluence {
-        
+
         final FunctionDesc function;
-        
+
         public DimensionAsMeasure(FunctionDesc function) {
             this.function = function;
         }
@@ -55,9 +71,68 @@ public class CapabilityResult {
         public double suggestCostMultiplier() {
             return 1;
         }
-        
+
+        @Override
+        public MeasureDesc getInvolvedMeasure() {
+            return null;
+        }
+
         public FunctionDesc getMeasureFunction() {
             return function;
+        }
+    }
+
+    public static enum IncapableType {
+        UNMATCHED_DIMENSION, UNMATCHED_AGGREGATION, UNSUPPORT_MASSIN, UNSUPPORT_RAWQUERY, LIMIT_PRECEDE_AGGR, II_UNMATCHED_FACT_TABLE, II_MISSING_COLS
+    }
+
+    public static class IncapableCause {
+        private IncapableType incapableType;
+        private Collection<TblColRef> unmatchedDimensions;
+        private Collection<FunctionDesc> unmatchedAggregations;
+
+        public static IncapableCause unmatchedDimensions(Collection<TblColRef> unmatchedDimensions) {
+            IncapableCause incapableCause = new IncapableCause();
+            incapableCause.setIncapableType(IncapableType.UNMATCHED_DIMENSION);
+            incapableCause.setUnmatchedDimensions(unmatchedDimensions);
+            return incapableCause;
+        }
+
+        public static IncapableCause unmatchedAggregations(Collection<FunctionDesc> unmatchedAggregations) {
+            IncapableCause incapableCause = new IncapableCause();
+            incapableCause.setIncapableType(IncapableType.UNMATCHED_AGGREGATION);
+            incapableCause.setUnmatchedAggregations(unmatchedAggregations);
+            return incapableCause;
+        }
+
+        public static IncapableCause create(IncapableType incapableType) {
+            IncapableCause incapableCause = new IncapableCause();
+            incapableCause.setIncapableType(incapableType);
+            return incapableCause;
+        }
+
+        public IncapableType getIncapableType() {
+            return incapableType;
+        }
+
+        public void setIncapableType(IncapableType incapableType) {
+            this.incapableType = incapableType;
+        }
+
+        public Collection<TblColRef> getUnmatchedDimensions() {
+            return unmatchedDimensions;
+        }
+
+        public void setUnmatchedDimensions(Collection<TblColRef> unmatchedDimensions) {
+            this.unmatchedDimensions = unmatchedDimensions;
+        }
+
+        public Collection<FunctionDesc> getUnmatchedAggregations() {
+            return unmatchedAggregations;
+        }
+
+        public void setUnmatchedAggregations(Collection<FunctionDesc> unmatchedAggregations) {
+            this.unmatchedAggregations = unmatchedAggregations;
         }
     }
 }

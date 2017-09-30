@@ -1,6 +1,9 @@
 Apache Kylin
 ============
 
+[![Build Status](https://travis-ci.org/apache/kylin.svg?branch=master)](https://travis-ci.org/apache/kylin)
+[![License](https://img.shields.io/badge/license-Apache%202-4EB1BA.svg)](https://www.apache.org/licenses/LICENSE-2.0.html)
+
 > Extreme OLAP Engine for Big Data
 
 Apache Kylin is an open source Distributed Analytics Engine, contributed by eBay Inc., provides SQL interface and multi-dimensional analysis (OLAP) on Hadoop supporting extremely large datasets.
@@ -9,7 +12,7 @@ For more details, see the website [http://kylin.apache.org](http://kylin.apache.
 
 Documentation
 =============
-Please refer to [http://kylin.apache.org/docs15/](http://kylin.apache.org/docs15/).
+Please refer to [http://kylin.apache.org/docs16/](http://kylin.apache.org/docs16/).
 
 Get Help
 ============

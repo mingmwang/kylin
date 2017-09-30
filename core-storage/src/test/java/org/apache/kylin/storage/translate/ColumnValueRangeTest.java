@@ -18,22 +18,35 @@
 
 package org.apache.kylin.storage.translate;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
+import org.apache.kylin.common.util.Dictionary;
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.dict.StringBytesConverter;
 import org.apache.kylin.dict.TrieDictionaryBuilder;
-import org.apache.kylin.dimension.Dictionary;
 import org.apache.kylin.metadata.filter.TupleFilter.FilterOperatorEnum;
-import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
-public class ColumnValueRangeTest {
+public class ColumnValueRangeTest extends LocalFileMetadataTestCase {
+
+    @BeforeClass
+    public static void setUp() throws Exception {
+        staticCreateTestMetadata();
+    }
+
+    @AfterClass
+    public static void after() throws Exception {
+        cleanAfterClass();
+    }
 
     @Test
     public void testPreEvaluateWithDict() {
@@ -79,7 +92,7 @@ public class ColumnValueRangeTest {
             assertEquals("CN", r4.getBeginValue());
             assertEquals(null, r4.getEndValue());
         }
-        
+
         // ever false check
         {
             ColumnValueRange r2 = new ColumnValueRange(col, set("UT"), FilterOperatorEnum.GTE);
@@ -107,24 +120,7 @@ public class ColumnValueRangeTest {
     }
 
     public static TblColRef mockupTblColRef() {
-        TableDesc t = mockupTableDesc("table_a");
-        ColumnDesc c = mockupColumnDesc(t, 1, "col_1", "string");
-        return new TblColRef(c);
-    }
-
-    private static TableDesc mockupTableDesc(String tableName) {
-        TableDesc mockup = new TableDesc();
-        mockup.setName(tableName);
-        return mockup;
-    }
-
-    private static ColumnDesc mockupColumnDesc(TableDesc table, int oneBasedColumnIndex, String name, String datatype) {
-        ColumnDesc desc = new ColumnDesc();
-        String id = "" + oneBasedColumnIndex;
-        desc.setId(id);
-        desc.setName(name);
-        desc.setDatatype(datatype);
-        desc.init(table);
-        return desc;
+        TableDesc t = TableDesc.mockup("table_a");
+        return TblColRef.mockup(t, 1, "col_1", "string");
     }
 }

@@ -21,12 +21,12 @@ package org.apache.kylin.storage.hbase.steps;
 import java.io.File;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceTool;
 import org.apache.kylin.common.util.ClassUtil;
 import org.apache.kylin.common.util.HBaseMetadataTestCase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This is a helper class for developer to directly manipulate the metadata store in sandbox
@@ -36,15 +36,14 @@ import org.apache.kylin.common.util.HBaseMetadataTestCase;
  * It is desinged to run in hadoop CLI, both in sandbox or in real hadoop environment
  */
 public class SandboxMetastoreCLI {
-
-    private static final Log logger = LogFactory.getLog(SandboxMetastoreCLI.class);
+    private static final Logger logger = LoggerFactory.getLogger(SandboxMetastoreCLI.class);
 
     public static void main(String[] args) throws Exception {
         logger.info("Adding to classpath: " + new File(HBaseMetadataTestCase.SANDBOX_TEST_DATA).getAbsolutePath());
         ClassUtil.addClasspath(new File(HBaseMetadataTestCase.SANDBOX_TEST_DATA).getAbsolutePath());
         System.setProperty(KylinConfig.KYLIN_CONF, HBaseMetadataTestCase.SANDBOX_TEST_DATA);
         if (StringUtils.isEmpty(System.getProperty("hdp.version"))) {
-            throw new RuntimeException("No hdp.version set; Please set hdp.version in your jvm option, for example: -Dhdp.version=2.2.4.2-2");
+            throw new RuntimeException("No hdp.version set; Please set hdp.version in your jvm option, for example: -Dhdp.version=2.4.0.0-169");
         }
 
         if (args.length < 1) {
@@ -54,8 +53,10 @@ public class SandboxMetastoreCLI {
 
         if ("reset".equalsIgnoreCase(args[0])) {
             ResourceTool.main(new String[] { "reset" });
-        }else if ("download".equalsIgnoreCase(args[0])) {
+        } else if ("download".equalsIgnoreCase(args[0])) {
             ResourceTool.main(new String[] { "download", args[1] });
+        } else if ("fetch".equalsIgnoreCase(args[0])) {
+            ResourceTool.main(new String[] { "fetch", args[1], args[2] });
         } else if ("upload".equalsIgnoreCase(args[0])) {
             ResourceTool.main(new String[] { "upload", args[1] });
         } else {
@@ -65,6 +66,7 @@ public class SandboxMetastoreCLI {
 
     private static void printUsage() {
         logger.info("Usage: SandboxMetastoreCLI download toFolder");
+        logger.info("Usage: SandboxMetastoreCLI fecth toFolder data");
         logger.info("Usage: SandboxMetastoreCLI upload   fromFolder");
     }
 }

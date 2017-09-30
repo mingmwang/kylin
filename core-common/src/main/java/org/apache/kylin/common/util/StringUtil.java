@@ -27,7 +27,7 @@ import org.apache.commons.lang.StringUtils;
  */
 public class StringUtil {
 
-    public static String[] filterSystemArgs(String args[]) {
+    public static String[] filterSystemArgs(String[] args) {
         ArrayList<String> whatsLeft = new ArrayList<String>();
         for (String a : args) {
             if (a.startsWith("-D")) {
@@ -47,6 +47,22 @@ public class StringUtil {
             }
         }
         return (String[]) whatsLeft.toArray(new String[whatsLeft.size()]);
+    }
+
+    /**
+     * Returns a substring by removing the specified suffix. If the given string
+     * does not ends with the suffix, the string is returned without change.
+     * 
+     * @param str
+     * @param suffix
+     * @return
+     */
+    public static String trimSuffix(String str, String suffix) {
+        if (str.endsWith(suffix)) {
+            return str.substring(0, str.length() - suffix.length());
+        } else {
+            return str;
+        }
     }
 
     public static String join(Iterable<String> parts, String separator) {
@@ -72,7 +88,7 @@ public class StringUtil {
     public static String noBlank(String str, String dft) {
         return StringUtils.isBlank(str) ? dft : str;
     }
-    
+
     public static String dropSuffix(String str, String suffix) {
         if (str.endsWith(suffix))
             return str.substring(0, str.length() - suffix.length());
@@ -122,6 +138,53 @@ public class StringUtil {
         String[] result = new String[endExclusive - start];
         System.arraycopy(array, start, result, 0, endExclusive - start);
         return result;
+    }
+
+    public static void appendWithSeparator(StringBuilder src, String append) {
+        if (src == null) {
+            throw new IllegalArgumentException();
+        }
+        if (src.length() > 0 && src.toString().endsWith(",") == false) {
+            src.append(",");
+        }
+
+        if (StringUtils.isBlank(append) == false) {
+            src.append(append);
+        }
+    }
+
+    public static String[] splitAndTrim(String str, String splitBy) {
+        String[] split = str.split(splitBy);
+        ArrayList<String> r = new ArrayList<>(split.length);
+        for (String s : split) {
+            s = s.trim();
+            if (!s.isEmpty())
+                r.add(s);
+        }
+        return r.toArray(new String[r.size()]);
+    }
+
+    // calculating length in UTF-8 of Java String without actually encoding it
+    public static int utf8Length(CharSequence sequence) {
+        int count = 0;
+        for (int i = 0, len = sequence.length(); i < len; i++) {
+            char ch = sequence.charAt(i);
+            if (ch <= 0x7F) {
+                count++;
+            } else if (ch <= 0x7FF) {
+                count += 2;
+            } else if (Character.isHighSurrogate(ch)) {
+                count += 4;
+                ++i;
+            } else {
+                count += 3;
+            }
+        }
+        return count;
+    }
+
+    public static boolean equals(String a, String b) {
+        return a == null ? b == null : a.equals(b);
     }
 
 }

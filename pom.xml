@@ -16,24 +16,25 @@
  See the License for the specific language governing permissions and
  limitations under the License.
 -->
-
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <parent>
         <groupId>org.apache</groupId>
         <artifactId>apache</artifactId>
         <version>16</version>
-        <relativePath />
+        <relativePath/>
         <!-- no parent resolution -->
     </parent>
 
     <groupId>org.apache.kylin</groupId>
     <artifactId>kylin</artifactId>
     <packaging>pom</packaging>
-    <version>1.5.2-SNAPSHOT</version>
+    <version>2.2.0-SNAPSHOT</version>
 
-    <name>Kylin:HadoopOLAPEngine</name>
+    <name>Apache Kylin</name>
     <url>http://kylin.apache.org</url>
     <inceptionYear>2014</inceptionYear>
 
@@ -41,69 +42,87 @@
     <properties>
         <!-- General Properties -->
         <javaVersion>1.7</javaVersion>
-        <maven-model.version>3.1.1</maven-model.version>
-        <maven-release.version>2.5.1</maven-release.version>
+        <maven-model.version>3.3.9</maven-model.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
 
         <!-- Hadoop versions -->
-        <hadoop2.version>2.6.0</hadoop2.version>
-        <yarn.version>2.6.0</yarn.version>
-        <zookeeper.version>3.4.6</zookeeper.version>
-        <hive.version>0.14.0</hive.version>
-        <hive-hcatalog.version>0.14.0</hive-hcatalog.version>
-        <hbase-hadoop2.version>0.98.8-hadoop2</hbase-hadoop2.version>
-        <kafka.version>0.8.1</kafka.version>
+        <hadoop2.version>2.7.1</hadoop2.version>
+        <yarn.version>2.7.1</yarn.version>
 
-        <!-- Dependency versions -->
-        <antlr.version>3.4</antlr.version>
-        <junit.version>4.11</junit.version>
-        <mrunit.version>1.0.0</mrunit.version>
-        <dbunit.version>2.5.0</dbunit.version>
-        <h2.version>1.3.174</h2.version>
+        <!-- Hive versions -->
+        <hive.version>1.2.1</hive.version>
+        <hive-hcatalog.version>1.2.1</hive-hcatalog.version>
 
-        <!-- Commons -->
+        <!-- HBase versions -->
+        <hbase-hadoop2.version>1.1.1</hbase-hadoop2.version>
+
+        <!-- Kafka versions -->
+        <kafka.version>0.10.1.0</kafka.version>
+
+        <!-- Spark versions -->
+        <spark.version>2.1.1</spark.version>
+        <kryo.version>4.0.0</kryo.version>
+
+        <!-- <reflections.version>0.9.10</reflections.version> -->
+
+        <!-- Calcite Version -->
+        <calcite.version>1.13.0-kylin-r2-SNAPSHOT</calcite.version>
+        <avatica.version>1.10.0</avatica.version>
+
+        <!-- Hadoop Common deps, keep compatible with hadoop2.version -->
+        <zookeeper.version>3.4.8</zookeeper.version>
+        <curator.version>2.7.1</curator.version>
+        <jsr305.version>3.0.1</jsr305.version>
+        <guava.version>14.0</guava.version>
+        <jsch.version>0.1.53</jsch.version>
         <commons-cli.version>1.2</commons-cli.version>
         <commons-lang.version>2.6</commons-lang.version>
-        <commons-lang3.version>3.1</commons-lang3.version>
-        <commons-collections.version>3.2.1</commons-collections.version>
         <commons-io.version>2.4</commons-io.version>
-        <commons-daemon.version>1.0.15</commons-daemon.version>
-        <commons-httpclient.version>3.1</commons-httpclient.version>
-        <commons-email.version>1.1</commons-email.version>
-        <commons-math3.version>3.6</commons-math3.version>
+        <commons-upload.version>1.3.3</commons-upload.version>
+        <commons-math3.version>3.1.1</commons-math3.version>
+        <commons-collections.version>3.2.2</commons-collections.version>
 
-        <!-- Spark -->
-        <spark.version>1.3.0</spark.version>
+        <!-- Calcite deps, keep compatible with calcite.version -->
+        <jackson.version>2.6.3</jackson.version>
+
+        <!-- Test Dependency versions -->
+        <antlr.version>3.4</antlr.version>
+        <junit.version>4.12</junit.version>
+        <mrunit.version>1.1.0</mrunit.version>
+        <dbunit.version>2.5.2</dbunit.version>
+        <h2.version>1.4.192</h2.version>
+        <jetty.version>9.2.20.v20161216</jetty.version>
+        <jamm.version>0.3.1</jamm.version>
+        <mockito.version>2.7.14</mockito.version>
+
+
+        <!-- Commons -->
+        <commons-lang3.version>3.4</commons-lang3.version>
+        <commons-email.version>1.5</commons-email.version>
 
         <!-- Utility -->
         <log4j.version>1.2.17</log4j.version>
-        <slf4j.version>1.7.7</slf4j.version>
-        <jackson.version>2.2.3</jackson.version>
-        <guava.version>12.0</guava.version>
-        <reflections.version>0.9.9-RC1</reflections.version>
-        <jsch.version>0.1.51</jsch.version>
-        <xerces.version>2.9.1</xerces.version>
-        <xalan.version>2.7.1</xalan.version>
-        <compress-lzf.version>1.0.3</compress-lzf.version>
-        <extendedset.version>1.3.4</extendedset.version>
-        <jetty.version>9.2.7.v20150116</jetty.version>
-        <kryo.version>3.0.3</kryo.version>
-        <ehcache.version>2.8.1</ehcache.version>
-        <apache-httpclient.version>4.5</apache-httpclient.version>
-        <roaring.version>(0.5.4,]</roaring.version>
-
-        <!-- REST Service -->
-        <spring.framework.version>3.1.2.RELEASE</spring.framework.version>
-        <spring.framework.security.extensions.version>1.0.1.RELEASE</spring.framework.security.extensions.version>
-        <opensaml.version>2.6.1</opensaml.version>
-        <spring.boot.version>1.2.7.RELEASE</spring.boot.version>
-
-        <!-- Calcite Version -->
-        <calcite.version>1.6.0</calcite.version>
-
-        <!-- Curator.version Version -->
-        <curator.version>2.6.0</curator.version>
+        <slf4j.version>1.7.21</slf4j.version>
+        <xerces.version>2.11.0</xerces.version>
+        <xalan.version>2.7.2</xalan.version>
+        <ehcache.version>2.10.2.2.21</ehcache.version>
+        <apache-httpclient.version>4.2.5</apache-httpclient.version>
+        <roaring.version>0.6.18</roaring.version>
+        <cglib.version>3.2.4</cglib.version>
+        <supercsv.version>2.4.0</supercsv.version>
+        <cors.version>2.5</cors.version>
+        <tomcat.version>7.0.81</tomcat.version>
+        <t-digest.version>3.1</t-digest.version>
+        <!--metric-->
+        <dropwizard.version>3.1.2</dropwizard.version>
+        <!-- REST Service, ref https://github.com/spring-projects/spring-boot/blob/v1.3.8.RELEASE/spring-boot-dependencies/pom.xml -->
+        <spring.boot.version>1.3.8.RELEASE</spring.boot.version>
+        <spring.framework.version>4.3.10.RELEASE</spring.framework.version>
+        <spring.framework.security.version>4.2.3.RELEASE</spring.framework.security.version>
+        <spring.framework.security.extensions.version>1.0.2.RELEASE</spring.framework.security.extensions.version>
+        <opensaml.version>2.6.4</opensaml.version>
+        <aspectj.version>1.8.9</aspectj.version>
 
         <!-- Sonar -->
         <sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
@@ -114,6 +133,8 @@
             org/apache/kylin/**/tools/**:**/*CLI.java
         </sonar.jacoco.excludes>
 
+        <!-- JVM Args for Testing -->
+        <argLine>-Xms1G -Xmx2G -XX:MaxPermSize=512M -Duser.timezone=UTC</argLine>
     </properties>
 
     <licenses>
@@ -167,22 +188,176 @@
 
     <scm>
         <connection>scm:git:https://git-wip-us.apache.org/repos/asf/kylin.git</connection>
-        <developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/kylin.git</developerConnection>
+        <developerConnection>scm:git:https://git-wip-us.apache.org/repos/asf/kylin.git
+        </developerConnection>
         <url>https://git-wip-us.apache.org/repos/asf/kylin.git</url>
+        <tag>HEAD</tag>
     </scm>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Kylin -->
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>atopcalcite</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-metadata</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-dictionary</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-cube</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-job</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-storage</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-engine-mr</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-engine-spark</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-source-hive</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-source-kafka</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-storage-hbase</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-query</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-server-base</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-server</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-jdbc</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-assembly</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-tool</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-tool-assembly</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-it</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-common</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-storage</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-storage-hbase</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-server-base</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-job</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-core-cube</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.kylin</groupId>
+                <artifactId>kylin-assembly</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+
             <!-- Hadoop2 dependencies -->
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
                 <artifactId>hadoop-common</artifactId>
                 <version>${hadoop2.version}</version>
-                <scope>compile</scope>
+                <scope>provided</scope>
                 <exclusions>
                     <exclusion>
                         <groupId>javax.servlet</groupId>
                         <artifactId>servlet-api</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>net.java.dev.jets3t</groupId>
+                        <artifactId>jets3t</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>javax.servlet.jsp</groupId>
+                        <artifactId>jsp-api</artifactId>
                     </exclusion>
                 </exclusions>
             </dependency>
@@ -203,6 +378,11 @@
             </dependency>
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-yarn-common</artifactId>
+                <version>${hadoop2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
                 <artifactId>hadoop-mapreduce-client-core</artifactId>
                 <version>${hadoop2.version}</version>
             </dependency>
@@ -210,6 +390,12 @@
                 <groupId>org.apache.hadoop</groupId>
                 <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
                 <version>${hadoop2.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.hadoop</groupId>
+                <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
+                <version>${hadoop2.version}</version>
+                <type>test-jar</type>
             </dependency>
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
@@ -226,6 +412,77 @@
                 <artifactId>hadoop-minicluster</artifactId>
                 <version>${hadoop2.version}</version>
                 <optional>true</optional>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.zookeeper</groupId>
+                <artifactId>zookeeper</artifactId>
+                <version>${zookeeper.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.curator</groupId>
+                <artifactId>curator-framework</artifactId>
+                <version>${curator.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.curator</groupId>
+                <artifactId>curator-recipes</artifactId>
+                <version>${curator.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.code.findbugs</groupId>
+                <artifactId>jsr305</artifactId>
+                <version>${jsr305.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>${guava.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.jcraft</groupId>
+                <artifactId>jsch</artifactId>
+                <version>${jsch.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>commons-cli</groupId>
+                <artifactId>commons-cli</artifactId>
+                <version>${commons-cli.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>commons-lang</groupId>
+                <artifactId>commons-lang</artifactId>
+                <version>${commons-lang.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-math3</artifactId>
+                <version>${commons-math3.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>${commons-io.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>commons-fileupload</groupId>
+                <artifactId>commons-fileupload</artifactId>
+                <version>${commons-upload.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-collections</groupId>
+                <artifactId>commons-collections</artifactId>
+                <version>${commons-collections.version}</version>
+                <scope>provided</scope>
             </dependency>
 
             <!-- HBase2 dependencies -->
@@ -255,14 +512,23 @@
                 <version>${mrunit.version}</version>
                 <classifier>hadoop2</classifier>
             </dependency>
-
+            <dependency>
+                <groupId>org.apache.hbase</groupId>
+                <artifactId>hbase-testing-util</artifactId>
+                <version>${hbase-hadoop2.version}</version>
+                <scope>test</scope>
+            </dependency>
             <!-- Hive dependencies -->
             <dependency>
                 <groupId>org.apache.hive</groupId>
                 <artifactId>hive-jdbc</artifactId>
                 <version>${hive.version}</version>
             </dependency>
-
+            <dependency>
+                <groupId>org.apache.hive.hcatalog</groupId>
+                <artifactId>hive-hcatalog-core</artifactId>
+                <version>${hive-hcatalog.version}</version>
+            </dependency>
             <!-- Yarn dependencies -->
             <dependency>
                 <groupId>org.apache.hadoop</groupId>
@@ -275,88 +541,103 @@
                 <groupId>org.apache.calcite</groupId>
                 <artifactId>calcite-core</artifactId>
                 <version>${calcite.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.calcite</groupId>
-                <artifactId>calcite-avatica</artifactId>
-                <version>${calcite.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.google.protobuf</groupId>
+                        <artifactId>protobuf-java</artifactId>
+                    </exclusion>
+                </exclusions>
             </dependency>
             <dependency>
                 <groupId>org.apache.calcite</groupId>
                 <artifactId>calcite-linq4j</artifactId>
                 <version>${calcite.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.apache.calcite.avatica</groupId>
+                <artifactId>avatica-core</artifactId>
+                <version>${avatica.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.calcite.avatica</groupId>
+                <artifactId>avatica</artifactId>
+                <version>${avatica.version}</version>
+            </dependency>
+            <!-- Workaround for hive 0.14 avatica dependency -->
+            <dependency>
+                <groupId>org.apache.calcite</groupId>
+                <artifactId>calcite-avatica</artifactId>
+                <version>1.6.0</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.google.protobuf</groupId>
+                        <artifactId>protobuf-java</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>com.fasterxml.jackson.core</groupId>
+                <artifactId>jackson-databind</artifactId>
+                <version>${jackson.version}</version>
+            </dependency>
 
             <!-- Spark dependency -->
             <dependency>
                 <groupId>org.apache.spark</groupId>
-                <artifactId>spark-core_2.10</artifactId>
+                <artifactId>spark-core_2.11</artifactId>
                 <version>${spark.version}</version>
+                <scope>provided</scope>
             </dependency>
-
             <dependency>
                 <groupId>org.apache.spark</groupId>
-                <artifactId>spark-sql_2.10</artifactId>
+                <artifactId>spark-sql_2.11</artifactId>
                 <version>${spark.version}</version>
+                <scope>provided</scope>
             </dependency>
-
             <dependency>
                 <groupId>org.apache.spark</groupId>
-                <artifactId>spark-hive_2.10</artifactId>
+                <artifactId>spark-hive_2.11</artifactId>
                 <version>${spark.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.esotericsoftware</groupId>
+                <artifactId>kryo-shaded</artifactId>
+                <version>${kryo.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <!-- Kafka dependency -->
+            <dependency>
+                <groupId>org.apache.kafka</groupId>
+                <artifactId>kafka_2.11</artifactId>
+                <version>${kafka.version}</version>
+                <scope>provided</scope>
             </dependency>
 
             <!-- Other dependencies -->
-            <dependency>
-                <groupId>junit</groupId>
-                <artifactId>junit</artifactId>
-                <version>${junit.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.zookeeper</groupId>
-                <artifactId>zookeeper</artifactId>
-                <version>${zookeeper.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>commons-cli</groupId>
-                <artifactId>commons-cli</artifactId>
-                <version>${commons-cli.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>commons-lang</groupId>
-                <artifactId>commons-lang</artifactId>
-                <version>${commons-lang.version}</version>
-            </dependency>
             <dependency>
                 <groupId>org.apache.commons</groupId>
                 <artifactId>commons-lang3</artifactId>
                 <version>${commons-lang3.version}</version>
             </dependency>
             <dependency>
-                <groupId>commons-collections</groupId>
-                <artifactId>commons-collections</artifactId>
-                <version>${commons-collections.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>org.apache.commons</groupId>
-                <artifactId>commons-math3</artifactId>
-                <version>${commons-math3.version}</version>
+                <artifactId>commons-email</artifactId>
+                <version>${commons-email.version}</version>
             </dependency>
 
-            <dependency>
-                <groupId>commons-io</groupId>
-                <artifactId>commons-io</artifactId>
-                <version>${commons-io.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>commons-daemon</groupId>
-                <artifactId>commons-daemon</artifactId>
-                <version>${commons-daemon.version}</version>
-            </dependency>
+            <!-- Logging -->
             <dependency>
                 <groupId>log4j</groupId>
                 <artifactId>log4j</artifactId>
                 <version>${log4j.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-log4j12</artifactId>
+                <version>${slf4j.version}</version>
+                <scope>provided</scope>
             </dependency>
             <dependency>
                 <groupId>org.slf4j</groupId>
@@ -368,50 +649,19 @@
                 <artifactId>slf4j-api</artifactId>
                 <version>${slf4j.version}</version>
             </dependency>
+
+            <!-- Test -->
             <dependency>
-                <groupId>org.slf4j</groupId>
-                <artifactId>slf4j-log4j12</artifactId>
-                <version>${slf4j.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-databind</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.fasterxml.jackson.core</groupId>
-                <artifactId>jackson-core</artifactId>
-                <version>${jackson.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>commons-httpclient</groupId>
-                <artifactId>commons-httpclient</artifactId>
-                <version>${commons-httpclient.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.commons</groupId>
-                <artifactId>commons-email</artifactId>
-                <version>${commons-email.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.google.guava</groupId>
-                <artifactId>guava</artifactId>
-                <version>${guava.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.reflections</groupId>
-                <artifactId>reflections</artifactId>
-                <version>${reflections.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.jcraft</groupId>
-                <artifactId>jsch</artifactId>
-                <version>${jsch.version}</version>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.dbunit</groupId>
                 <artifactId>dbunit</artifactId>
                 <version>${dbunit.version}</version>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>org.apache.maven</groupId>
@@ -422,6 +672,7 @@
                 <groupId>com.h2database</groupId>
                 <artifactId>h2</artifactId>
                 <version>${h2.version}</version>
+                <scope>test</scope>
             </dependency>
             <dependency>
                 <groupId>xerces</groupId>
@@ -434,45 +685,181 @@
                 <version>${xalan.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.ning</groupId>
-                <artifactId>compress-lzf</artifactId>
-                <version>${compress-lzf.version}</version>
+                <groupId>com.github.jbellis</groupId>
+                <artifactId>jamm</artifactId>
+                <version>${jamm.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.n3twork.druid</groupId>
-                <artifactId>extendedset</artifactId>
-                <version>${extendedset.version}</version>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpclient</artifactId>
+                <version>${apache-httpclient.version}</version>
             </dependency>
-            <dependency>
-                <groupId>com.esotericsoftware</groupId>
-                <artifactId>kryo-shaded</artifactId>
-                <version>${kryo.version}</version>
-            </dependency>
-
-            <dependency>
-                <groupId>org.apache.curator</groupId>
-                <artifactId>curator-framework</artifactId>
-                <version>${curator.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.apache.curator</groupId>
-                <artifactId>curator-recipes</artifactId>
-                <version>${curator.version}</version>
-            </dependency>
-      	  	<dependency>
-      	    		<groupId>org.apache.httpcomponents</groupId>
-	              <artifactId>httpclient</artifactId>
- 	          	  <version>${apache-httpclient.version}</version>
- 	     	    </dependency>
-
             <dependency>
                 <groupId>org.roaringbitmap</groupId>
                 <artifactId>RoaringBitmap</artifactId>
                 <version>${roaring.version}</version>
             </dependency>
+            <dependency>
+                <groupId>com.tdunning</groupId>
+                <artifactId>t-digest</artifactId>
+                <version>${t-digest.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>cglib</groupId>
+                <artifactId>cglib</artifactId>
+                <version>${cglib.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf.supercsv</groupId>
+                <artifactId>super-csv</artifactId>
+                <version>${supercsv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.aspectj</groupId>
+                <artifactId>aspectjrt</artifactId>
+                <version>${aspectj.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.aspectj</groupId>
+                <artifactId>aspectjweaver</artifactId>
+                <version>${aspectj.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.thetransactioncompany</groupId>
+                <artifactId>cors-filter</artifactId>
+                <version>${cors.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf.ehcache</groupId>
+                <artifactId>ehcache</artifactId>
+                <version>${ehcache.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.opensaml</groupId>
+                <artifactId>opensaml</artifactId>
+                <version>${opensaml.version}</version>
+            </dependency>
 
+
+            <!-- Spring Core -->
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-webmvc</artifactId>
+                <version>${spring.framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-jdbc</artifactId>
+                <version>${spring.framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-aop</artifactId>
+                <version>${spring.framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-context-support</artifactId>
+                <version>${spring.framework.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework</groupId>
+                <artifactId>spring-test</artifactId>
+                <version>${spring.framework.version}</version>
+            </dependency>
+            <!-- Spring Security -->
+            <dependency>
+                <groupId>org.springframework.security</groupId>
+                <artifactId>spring-security-acl</artifactId>
+                <version>${spring.framework.security.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.security</groupId>
+                <artifactId>spring-security-config</artifactId>
+                <version>${spring.framework.security.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.security</groupId>
+                <artifactId>spring-security-core</artifactId>
+                <version>${spring.framework.security.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.security</groupId>
+                <artifactId>spring-security-ldap</artifactId>
+                <version>${spring.framework.security.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.security</groupId>
+                <artifactId>spring-security-web</artifactId>
+                <version>${spring.framework.security.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.security.extensions</groupId>
+                <artifactId>spring-security-saml2-core</artifactId>
+                <version>${spring.framework.security.extensions.version}</version>
+            </dependency>
+            
+            <dependency>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-server</artifactId>
+                <version>${jetty.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.eclipse.jetty</groupId>
+                <artifactId>jetty-webapp</artifactId>
+                <version>${jetty.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat</groupId>
+                <artifactId>tomcat-catalina</artifactId>
+                <version>${tomcat.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat</groupId>
+                <artifactId>tomcat-jasper</artifactId>
+                <version>${tomcat.version}</version>
+                <scope>provided</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.tomcat.embed</groupId>
+                <artifactId>tomcat-embed-core</artifactId>
+                <version>${tomcat.version}</version>
+                <scope>provided</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <dependencies>
+
+        <!-- the logging dependencies are inherited by all modules for their generality
+            log4j and slf4j-log4j12 test scope only for UT/IT use -->
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>jcl-over-slf4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <!--for transitive dependencies like commons-collectinos, commons-lang -->
+        <dependency>
+            <groupId>org.apache.hadoop</groupId>
+            <artifactId>hadoop-common</artifactId>
+        </dependency>
+    </dependencies>
 
     <repositories>
         <repository>
@@ -489,6 +876,24 @@
             <id>conjars</id>
             <url>http://conjars.org/repo/</url>
         </repository>
+
+        <repository>
+            <id>cloudera</id>
+            <url>https://repository.cloudera.com/artifactory/cloudera-repos/</url>
+        </repository>
+
+        <repository>
+            <id>nexus</id>
+            <name>Kyligence Repository</name>
+            <url>http://repository.kyligence.io:8081/repository/maven-public/
+            </url>
+            <releases>
+                <enabled>true</enabled>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+        </repository>
     </repositories>
 
     <build>
@@ -497,7 +902,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-compiler-plugin</artifactId>
-                    <version>3.1</version>
+                    <version>3.5.1</version>
                     <configuration>
                         <source>${javaVersion}</source>
                         <target>${javaVersion}</target>
@@ -506,17 +911,17 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-site-plugin</artifactId>
-                    <version>2.0</version>
+                    <version>3.5.1</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-install-plugin</artifactId>
-                    <version>2.2</version>
+                    <version>2.5.2</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-resources-plugin</artifactId>
-                    <version>2.4</version>
+                    <version>3.0.1</version>
                     <configuration>
                         <encoding>UTF-8</encoding>
                     </configuration>
@@ -524,7 +929,7 @@
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-jar-plugin</artifactId>
-                    <version>2.4</version>
+                    <version>3.0.2</version>
                     <executions>
                         <execution>
                             <goals>
@@ -532,6 +937,11 @@
                             </goals>
                         </execution>
                     </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.0.0</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -546,16 +956,12 @@
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-dependency-plugin</artifactId>
-                </plugin>
-                <plugin>
-                    <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-antrun-plugin</artifactId>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-source-plugin</artifactId>
-                    <version>2.1.2</version>
+                    <version>3.0.1</version>
                     <executions>
                         <execution>
                             <id>attach-sources</id>
@@ -569,43 +975,134 @@
                         <includePom>true</includePom>
                     </configuration>
                 </plugin>
-                <!--<plugin>-->
-                <!--<groupId>org.apache.maven.plugins</groupId>-->
-                <!--<artifactId>maven-failsafe-plugin</artifactId>-->
-                <!--<version>2.6</version>-->
-                <!--<executions>-->
-                <!--<execution>-->
-                <!--<goals>-->
-                <!--<goal>integration-test</goal>-->
-                <!--<goal>verify</goal>-->
-                <!--</goals>-->
-                <!--</execution>-->
-                <!--</executions>-->
-                <!--</plugin>-->
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-release-plugin</artifactId>
-                    <version>${maven-release.version}</version>
+                    <version>2.5.3</version>
                 </plugin>
                 <plugin>
                     <groupId>org.jacoco</groupId>
                     <artifactId>jacoco-maven-plugin</artifactId>
-                    <version>0.7.0.201403182114</version>
-                    <configuration>
-                        <destFile>${sonar.jacoco.reportPath}</destFile>
-                        <append>true</append>
-                    </configuration>
+                    <version>0.7.8</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-checkstyle-plugin</artifactId>
+                    <version>2.17</version>
+                    <dependencies>
+                        <dependency>
+                            <groupId>com.puppycrawl.tools</groupId>
+                            <artifactId>checkstyle</artifactId>
+                            <version>6.19</version>
+                        </dependency>
+                    </dependencies>
                     <executions>
                         <execution>
-                            <id>agent</id>
+                            <id>check-style</id>
+                            <phase>validate</phase>
+                            <configuration>
+                                <configLocation>dev-support/checkstyle.xml</configLocation>
+                                <suppressionsLocation>dev-support/checkstyle-suppressions.xml
+                                </suppressionsLocation>
+                                <includeTestSourceDirectory>true</includeTestSourceDirectory>
+                                <consoleOutput>true</consoleOutput>
+                                <failsOnError>true</failsOnError>
+                            </configuration>
                             <goals>
-                                <goal>prepare-agent</goal>
+                                <goal>check</goal>
                             </goals>
                         </execution>
                     </executions>
                 </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>findbugs-maven-plugin</artifactId>
+                    <version>3.0.4</version>
+                    <configuration>
+                        <xmlOutput>true</xmlOutput>
+                        <effort>Max</effort>
+                        <threshold>Low</threshold>
+                        <failOnError>false</failOnError>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>net.ju-n.maven.plugins</groupId>
+                    <artifactId>checksum-maven-plugin</artifactId>
+                    <version>1.3</version>
+                </plugin>
+                <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
+                <plugin>
+                    <groupId>org.eclipse.m2e</groupId>
+                    <artifactId>lifecycle-mapping</artifactId>
+                    <version>1.0.0</version>
+                    <configuration>
+                        <lifecycleMappingMetadata>
+                            <pluginExecutions>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.apache.maven.plugins
+                                        </groupId>
+                                        <artifactId>
+                                            maven-checkstyle-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [2.13,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>check</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore/>
+                                    </action>
+                                </pluginExecution>
+                            </pluginExecutions>
+                        </lifecycleMappingMetadata>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>1.5.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring.boot.version}</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>2.10</version>
+                </plugin>
             </plugins>
         </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-checkstyle-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>findbugs-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>analyze</id>
+                        <goals>
+                            <goal>analyze-only</goal>
+                        </goals>
+                        <!--<configuration>-->
+                        <!--<failOnWarning>true</failOnWarning>-->
+                        <!--</configuration>-->
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 
     <modules>
@@ -617,19 +1114,57 @@
         <module>core-job</module>
         <module>core-storage</module>
         <module>engine-mr</module>
-        <module>engine-streaming</module>
         <module>engine-spark</module>
         <module>source-hive</module>
         <module>source-kafka</module>
         <module>storage-hbase</module>
         <module>query</module>
+        <module>server-base</module>
         <module>server</module>
         <module>jdbc</module>
-        <module>invertedindex</module>
         <module>assembly</module>
         <module>tool</module>
+        <module>tool-assembly</module>
         <module>kylin-it</module>
+        <module>tomcat-ext</module>
     </modules>
+
+    <reporting>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-project-info-reports-plugin</artifactId>
+                <version>2.9</version>
+                <reportSets>
+                    <reportSet>
+                        <reports>
+                            <report>index</report>
+                            <report>summary</report>
+                            <report>dependency-info</report>
+                            <report>project-team</report>
+                            <report>scm</report>
+                            <report>issue-tracking</report>
+                            <report>mailing-list</report>
+                            <!-- <report>dependency-management</report> -->
+                            <!-- <report>dependencies</report> -->
+                            <!-- <report>dependency-convergence</report> -->
+                            <report>cim</report>
+                            <report>plugin-management</report>
+                            <report>plugins</report>
+                            <report>distribution-management</report>
+                            <report>license</report>
+                            <report>modules</report>
+                        </reports>
+                    </reportSet>
+                </reportSets>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>findbugs-maven-plugin</artifactId>
+                <version>3.0.4</version>
+            </plugin>
+        </plugins>
+    </reporting>
 
     <profiles>
         <profile>
@@ -642,7 +1177,6 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-compiler-plugin</artifactId>
-                        <version>2.5.1</version>
                         <configuration>
                             <fork>true</fork>
                             <meminitial>1024m</meminitial>
@@ -652,28 +1186,191 @@
 
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
-                        <artifactId>maven-surefire-plugin</artifactId>
-                        <version>2.16</version>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-jamm</id>
+                                <goals>
+                                    <goal>copy</goal>
+                                </goals>
+                                <phase>generate-test-resources</phase>
+                                <configuration>
+                                    <artifactItems>
+                                        <artifactItem>
+                                            <groupId>com.github.jbellis</groupId>
+                                            <artifactId>jamm</artifactId>
+                                            <outputDirectory>${project.build.testOutputDirectory}
+                                            </outputDirectory>
+                                            <destFileName>jamm.jar</destFileName>
+                                        </artifactItem>
+                                    </artifactItems>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
                         <configuration>
-                            <reportsDirectory>${project.basedir}/../target/surefire-reports</reportsDirectory>
+                            <append>true</append>
+                            <destFile>
+                                ${sonar.jacoco.reportPath}
+                            </destFile>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>pre-test</id>
+                                <goals>
+                                    <goal>prepare-agent</goal>
+                                </goals>
+                                <configuration>
+                                    <propertyName>surefireArgLine</propertyName>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>post-test</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>report</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>2.19.1</version>
+                        <configuration>
+                            <reportsDirectory>${project.basedir}/../target/surefire-reports
+                            </reportsDirectory>
                             <excludes>
                                 <exclude>**/IT*.java</exclude>
                             </excludes>
                             <systemProperties>
                                 <property>
-                                    <name>useSandbox</name>
+                                    <name>buildCubeUsingProvidedData</name>
                                     <value>false</value>
                                 </property>
+                                <property>
+                                    <name>log4j.configuration</name>
+                                    <value>
+                                        file:${project.basedir}/../build/conf/kylin-tools-log4j.properties
+                                    </value>
+                                </property>
+                            </systemProperties>
+                            <argLine>-javaagent:${project.build.testOutputDirectory}/jamm.jar
+                                ${argLine} ${surefireArgLine}
+                            </argLine>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>cdh5.7</id>
+            <properties>
+                <hadoop2.version>2.6.0-cdh5.7.0</hadoop2.version>
+                <yarn.version>2.6.0-cdh5.7.0</yarn.version>
+                <hive.version>1.1.0-cdh5.7.0</hive.version>
+                <hive-hcatalog.version>1.1.0-cdh5.7.0</hive-hcatalog.version>
+                <hbase-hadoop2.version>1.2.0-cdh5.7.0</hbase-hadoop2.version>
+                <zookeeper.version>3.4.5-cdh5.7.0</zookeeper.version>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <configuration>
+                            <fork>true</fork>
+                            <meminitial>1024m</meminitial>
+                            <maxmem>2048m</maxmem>
+                        </configuration>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>copy-jamm</id>
+                                <goals>
+                                    <goal>copy</goal>
+                                </goals>
+                                <phase>generate-test-resources</phase>
+                                <configuration>
+                                    <artifactItems>
+                                        <artifactItem>
+                                            <groupId>com.github.jbellis</groupId>
+                                            <artifactId>jamm</artifactId>
+                                            <outputDirectory>${project.build.testOutputDirectory}
+                                            </outputDirectory>
+                                            <destFileName>jamm.jar</destFileName>
+                                        </artifactItem>
+                                    </artifactItems>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.jacoco</groupId>
+                        <artifactId>jacoco-maven-plugin</artifactId>
+                        <configuration>
+                            <append>true</append>
+                            <destFile>
+                                ${sonar.jacoco.reportPath}
+                            </destFile>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>pre-test</id>
+                                <goals>
+                                    <goal>prepare-agent</goal>
+                                </goals>
+                                <configuration>
+                                    <propertyName>surefireArgLine</propertyName>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>post-test</id>
+                                <phase>test</phase>
+                                <goals>
+                                    <goal>report</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <version>2.19.1</version>
+                        <configuration>
+                            <reportsDirectory>${project.basedir}/../target/surefire-reports
+                            </reportsDirectory>
+                            <excludes>
+                                <exclude>**/IT*.java</exclude>
+                            </excludes>
+                            <systemProperties>
                                 <property>
                                     <name>buildCubeUsingProvidedData</name>
                                     <value>false</value>
                                 </property>
+                                <property>
+                                    <name>log4j.configuration</name>
+                                    <value>
+                                        file:${project.basedir}/../build/conf/kylin-tools-log4j.properties
+                                    </value>
+                                </property>
                             </systemProperties>
-                            <argLine>-Xms1G -Xmx2G -XX:MaxPermSize=512M</argLine>
+                            <argLine>-javaagent:${project.build.testOutputDirectory}/jamm.jar
+                                ${argLine} ${surefireArgLine}
+                            </argLine>
                         </configuration>
                     </plugin>
-
-
                 </plugins>
             </build>
         </profile>
@@ -705,7 +1402,9 @@
                                     <tarLongFileMode>posix</tarLongFileMode>
                                     <runOnlyAtExecutionRoot>true</runOnlyAtExecutionRoot>
                                     <appendAssemblyId>true</appendAssemblyId>
-                                    <descriptor>src/main/config/assemblies/source-assembly.xml</descriptor>
+                                    <descriptor>
+                                        assembly/src/main/config/assemblies/source-assembly.xml
+                                    </descriptor>
                                     <finalName>apache-kylin-${project.version}</finalName>
                                 </configuration>
                             </execution>
@@ -727,11 +1426,13 @@
                                 <exclude>**/LICENSE*</exclude>
                                 <!-- Local git repo -->
                                 <exclude>.git/**</exclude>
+                                <exclude>.gitconfig</exclude>
                                 <!-- IDE files -->
                                 <exclude>.idea/**</exclude>
                                 <exclude>**/*.iml</exclude>
                                 <exclude>**/.classpath</exclude>
                                 <exclude>**/.project</exclude>
+                                <exclude>**/.settings/**</exclude>
 
                                 <!-- image files constitute images required for documentation. .pptx contain the sources for images -->
                                 <exclude>**/*.png</exclude>
@@ -741,18 +1442,21 @@
 
                                 <!--Test Data-->
                                 <exclude>**/src/test/resources/**</exclude>
+                                <exclude>examples/sample_cube/template/**</exclude>
+                                <exclude>examples/test_case_data/localmeta/**</exclude>
 
                                 <!-- generated files -->
                                 <exclude>**/target/**</exclude>
                                 <exclude>lib/**</exclude>
                                 <exclude>dist/**</exclude>
                                 <exclude>website/**</exclude>
-                                
+
                                 <!-- text files without comments -->
                                 <exclude>**/*.csv</exclude>
                                 <exclude>**/*.json</exclude>
+                                <exclude>**/*.json.bad</exclude>
                                 <exclude>**/*.md</exclude>
-                                
+
                                 <!-- binary files -->
                                 <exclude>**/*.dict</exclude>
                                 <exclude>**/*.dic</exclude>
@@ -762,13 +1466,13 @@
                                 <exclude>**/*.doc</exclude>
                                 <exclude>**/*.txt</exclude>
                                 <exclude>**/.checkstyle</exclude>
-                                
+
                                 <!-- Kylin's website content -->
                                 <exclude>**/.sass-cache/**</exclude>
 
                                 <!-- tomcat package -->
                                 <exclude>tomcat/**</exclude>
-                                
+
                                 <!-- front end libary and generated files -->
                                 <exclude>webapp/node_modules/**</exclude>
                                 <exclude>webapp/dist/**</exclude>
@@ -781,10 +1485,12 @@
 
                                 <!-- MIT license -->
                                 <exclude>webapp/app/css/AdminLTE.css</exclude>
+                                <exclude>webapp/app/css/messenger-theme-ice.css</exclude>
                                 <exclude>webapp/app/js/directives/kylin_abn_tree_directive.js</exclude>
                                 <exclude>webapp/app/js/directives/angular-tree-control.js</exclude>
                                 <exclude>webapp/app/js/directives/datetimepicker.js</exclude>
                                 <exclude>webapp/app/js/directives/select.js</exclude>
+                                <exclude>webapp/app/js/directives/ui-grid.js</exclude>
 
                                 <!--configuration file -->
                                 <exclude>webapp/app/routes.json</exclude>
@@ -808,6 +1514,17 @@
                                 <exclude>**/*.DEF</exclude>
                                 <exclude>**/*.isl</exclude>
                                 <exclude>**/*.isproj</exclude>
+
+                                <!-- protobuf generated -->
+                                <exclude>
+                                    src/main/java/org/apache/kylin/storage/hbase/ii/coprocessor/endpoint/generated/IIProtos.java
+                                </exclude>
+                                <exclude>
+                                    src/main/java/org/apache/kylin/storage/hbase/cube/v1/filter/generated/FilterProtosExt.java
+                                </exclude>
+                                <exclude>
+                                    src/main/java/org/apache/kylin/storage/hbase/cube/v2/coprocessor/endpoint/generated/CubeVisitProtos.java
+                                </exclude>
                             </excludes>
                         </configuration>
                         <executions>
@@ -822,7 +1539,7 @@
                             <dependency>
                                 <groupId>org.apache.maven.doxia</groupId>
                                 <artifactId>doxia-core</artifactId>
-                                <version>1.6</version>
+                                <version>1.7</version>
                                 <exclusions>
                                     <exclusion>
                                         <groupId>xerces</groupId>
@@ -835,7 +1552,6 @@
                     <plugin>
                         <groupId>net.ju-n.maven.plugins</groupId>
                         <artifactId>checksum-maven-plugin</artifactId>
-                        <version>1.2</version>
                         <executions>
                             <execution>
                                 <goals>

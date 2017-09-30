@@ -18,14 +18,19 @@
 
 package org.apache.kylin.measure.dim;
 
+import java.util.List;
+import java.util.Map;
+
 import org.apache.kylin.measure.MeasureAggregator;
 import org.apache.kylin.measure.MeasureIngester;
 import org.apache.kylin.measure.MeasureType;
 import org.apache.kylin.measure.MeasureTypeFactory;
 import org.apache.kylin.metadata.datatype.DataType;
-import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.realization.SQLDigest;
+
+import com.google.common.collect.ImmutableMap;
 
 /**
  * Created by dongli on 4/20/16.
@@ -54,6 +59,7 @@ public class DimCountDistinctMeasureType extends MeasureType<Object> {
         }
 
     }
+
     @Override
     public MeasureIngester newIngester() {
         throw new UnsupportedOperationException("No ingester for this measure type.");
@@ -74,13 +80,17 @@ public class DimCountDistinctMeasureType extends MeasureType<Object> {
         return false;
     }
 
+    static final Map<String, Class<?>> UDAF_MAP = ImmutableMap.<String, Class<?>> of(FunctionDesc.FUNC_COUNT_DISTINCT, DimCountDistinctAggFunc.class);
+
     @Override
-    public Class<?> getRewriteCalciteAggrFunctionClass() {
-        return DimCountDistinctAggFunc.class;
+    public Map<String, Class<?>> getRewriteCalciteAggrFunctions() {
+        return UDAF_MAP;
     }
 
-    public void adjustSqlDigest(MeasureDesc measureDesc, SQLDigest sqlDigest) {
-        sqlDigest.groupbyColumns.addAll(measureDesc.getFunction().getParameter().getColRefs());
-        sqlDigest.aggregations.remove(measureDesc.getFunction());
+    public void adjustSqlDigest(List<MeasureDesc> measureDescs, SQLDigest sqlDigest) {
+        for (MeasureDesc measureDesc : measureDescs) {
+            sqlDigest.groupbyColumns.addAll(measureDesc.getFunction().getParameter().getColRefs());
+            sqlDigest.aggregations.remove(measureDesc.getFunction());
+        }
     }
 }

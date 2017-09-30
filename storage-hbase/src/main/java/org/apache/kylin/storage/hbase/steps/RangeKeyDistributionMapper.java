@@ -38,25 +38,20 @@ public class RangeKeyDistributionMapper extends KylinMapper<Text, Text, Text, Lo
 
     private Text lastKey;
 
-    private Long scaleFactorForSandbox = 1L;
-
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
-        if (context.getConfiguration().getBoolean("isDevEnv", false)) {
-            scaleFactorForSandbox = 1024L;
-        }
     }
 
     @Override
-    public void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+    public void doMap(Text key, Text value, Context context) throws IOException, InterruptedException {
         lastKey = key;
 
         int bytesLength = key.getLength() + value.getLength();
         bytesRead += bytesLength;
 
-        if ((bytesRead * scaleFactorForSandbox) >= ONE_MEGA_BYTES) {
-            outputValue.set(bytesRead * scaleFactorForSandbox);
+        if (bytesRead >= ONE_MEGA_BYTES) {
+            outputValue.set(bytesRead);
             context.write(key, outputValue);
 
             // reset bytesRead
@@ -66,7 +61,7 @@ public class RangeKeyDistributionMapper extends KylinMapper<Text, Text, Text, Lo
     }
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
+    protected void doCleanup(Context context) throws IOException, InterruptedException {
         if (lastKey != null) {
             outputValue.set(bytesRead);
             context.write(lastKey, outputValue);

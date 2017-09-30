@@ -18,25 +18,28 @@
 
 package org.apache.kylin.engine.mr.steps;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import java.io.IOException;
+import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
+
+import org.apache.kylin.common.util.ImmutableBitSet;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.cuboid.Cuboid;
 import org.apache.kylin.cube.inmemcubing.ICuboidWriter;
 import org.apache.kylin.cube.kv.AbstractRowKeyEncoder;
-import org.apache.kylin.cube.kv.RowConstants;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.engine.mr.ByteArrayWritable;
 import org.apache.kylin.gridtable.GTRecord;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  */
 public abstract class KVGTRecordWriter implements ICuboidWriter {
 
-    private static final Log logger = LogFactory.getLog(KVGTRecordWriter.class);
+    private static final Logger logger = LoggerFactory.getLogger(KVGTRecordWriter.class);
+
     private Long lastCuboidId;
     protected CubeSegment cubeSegment;
     protected CubeDesc cubeDesc;
@@ -45,8 +48,8 @@ public abstract class KVGTRecordWriter implements ICuboidWriter {
     private int dimensions;
     private int measureCount;
     private byte[] keyBuf;
-    private int[] measureColumnsIndex;
-    private ByteBuffer valueBuf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
+    private ImmutableBitSet measureColumns;
+    private ByteBuffer valueBuf = ByteBuffer.allocate(BufferedMeasureCodec.DEFAULT_BUFFER_SIZE);
     private ByteArrayWritable outputKey = new ByteArrayWritable();
     private ByteArrayWritable outputValue = new ByteArrayWritable();
     private long cuboidRowCount = 0;
@@ -77,7 +80,12 @@ public abstract class KVGTRecordWriter implements ICuboidWriter {
 
         //output measures
         valueBuf.clear();
-        record.exportColumns(measureColumnsIndex, valueBuf);
+        try {
+            record.exportColumns(measureColumns, valueBuf);
+        } catch (BufferOverflowException boe) {
+            valueBuf = ByteBuffer.allocate((int) (record.sizeOf(measureColumns) * 1.5));
+            record.exportColumns(measureColumns, valueBuf);
+        }
 
         outputKey.set(keyBuf, 0, keyBuf.length);
         outputValue.set(valueBuf.array(), 0, valueBuf.position());
@@ -87,13 +95,10 @@ public abstract class KVGTRecordWriter implements ICuboidWriter {
     protected abstract void writeAsKeyValue(ByteArrayWritable key, ByteArrayWritable value) throws IOException;
 
     private void initVariables(Long cuboidId) {
-        rowKeyEncoder = AbstractRowKeyEncoder.createInstance(cubeSegment, Cuboid.findById(cubeDesc, cuboidId));
+        rowKeyEncoder = AbstractRowKeyEncoder.createInstance(cubeSegment, Cuboid.findById(cubeSegment, cuboidId));
         keyBuf = rowKeyEncoder.createBuf();
 
         dimensions = Long.bitCount(cuboidId);
-        measureColumnsIndex = new int[measureCount];
-        for (int i = 0; i < measureCount; i++) {
-            measureColumnsIndex[i] = dimensions + i;
-        }
+        measureColumns = new ImmutableBitSet(dimensions, dimensions + measureCount);
     }
 }

@@ -24,7 +24,7 @@ cd ${dir}/../..
 if [ -z "$version" ]
 then
     echo 'version not set'
-    version=`mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -v '\['`
+    version=`mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version |  grep -E '^[0-9]+\.[0-9]+\.[0-9]+'  `
     echo "${version}"
 fi
 
@@ -34,11 +34,17 @@ package_name=apache-kylin-${version}-bin
 cd build/
 rm -rf ${package_name}
 mkdir ${package_name}
-cp -r lib bin conf tomcat ../examples/sample_cube commit_SHA1 ${package_name}
-rm -rf lib tomcat commit_SHA1
+cp -r ext lib tool bin conf tomcat spark ../examples/sample_cube commit_SHA1 ${package_name}
+rm -rf ext lib tomcat spark commit_SHA1
+
+## comment all default properties, and append them to the user visible kylin.properties
+## first 16 lines are license, just skip them
+sed '1,16d' ../core-common/src/main/resources/kylin-defaults.properties | awk '{print "#"$0}' >> ${package_name}/conf/kylin.properties
+
 find ${package_name} -type d -exec chmod 755 {} \;
 find ${package_name} -type f -exec chmod 644 {} \;
 find ${package_name} -type f -name "*.sh" -exec chmod 755 {} \;
+find ${package_name}/spark/bin/ -type f -exec chmod +x {} \;
 mkdir -p ../dist
 tar -cvzf ../dist/${package_name}.tar.gz ${package_name}
 rm -rf ${package_name}

@@ -20,7 +20,14 @@ package org.apache.kylin.storage;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+import org.apache.kylin.common.StorageURL;
+import org.apache.kylin.common.debug.BackdoorToggles;
 import org.apache.kylin.cube.cuboid.Cuboid;
+import org.apache.kylin.gridtable.StorageLimitLevel;
+import org.apache.kylin.metadata.realization.IRealization;
+import org.apache.kylin.storage.gtrecord.GTCubeStorageQueryBase;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Range;
 
@@ -28,65 +35,64 @@ import com.google.common.collect.Range;
  * @author xjiang
  */
 public class StorageContext {
+    private static final Logger logger = LoggerFactory.getLogger(StorageContext.class);
 
-    public static final int DEFAULT_THRESHOLD = 1000000;
+    private StorageURL connUrl;
+    private int limit = Integer.MAX_VALUE;
+    private boolean overlookOuterLimit = false;
+    private int offset = 0;
+    private int finalPushDownLimit = Integer.MAX_VALUE;
+    private StorageLimitLevel storageLimitLevel = StorageLimitLevel.NO_LIMIT;
+    private boolean hasSort = false;
+    private boolean acceptPartialResult = false;
+    private long deadline;
 
-    private String connUrl;
-    private int threshold;
-    private int limit;
-    private int offset;
-    private boolean hasSort;
-    private boolean acceptPartialResult;
+    private boolean exactAggregation = false;
+    private boolean needStorageAggregation = false;
+    private boolean enableCoprocessor = false;
+    private boolean enableStreamAggregate = false;
 
-    private boolean exactAggregation;
-    private boolean enableLimit;
-    private boolean enableCoprocessor;
-
-    private AtomicLong totalScanCount;
+    private IStorageQuery storageQuery;
+    private AtomicLong processedRowCount = new AtomicLong();
     private Cuboid cuboid;
-    private boolean partialResultReturned;
+    private boolean partialResultReturned = false;
 
     private Range<Long> reusedPeriod;
 
-    public StorageContext() {
-        this.threshold = DEFAULT_THRESHOLD;
-        this.limit = DEFAULT_THRESHOLD;
-        this.totalScanCount = new AtomicLong();
-        this.cuboid = null;
-        this.hasSort = false;
-
-        this.exactAggregation = false;
-        this.enableLimit = false;
-        this.enableCoprocessor = false;
-
-        this.acceptPartialResult = false;
-        this.partialResultReturned = false;
-    }
-
-    public String getConnUrl() {
+    public StorageURL getConnUrl() {
         return connUrl;
     }
 
-    public void setConnUrl(String connUrl) {
+    public void setConnUrl(StorageURL connUrl) {
         this.connUrl = connUrl;
     }
 
-    public int getThreshold() {
-        return threshold;
-    }
-
-    public void setThreshold(int t) {
-        threshold = t;
-    }
-
-    public int getLimit() {
-        return limit;
+    //the limit here correspond to the limit concept in SQL
+    //also take into consideration Statement.setMaxRows in JDBC
+    private int getLimit() {
+        if (overlookOuterLimit || BackdoorToggles.getStatementMaxRows() == null
+                || BackdoorToggles.getStatementMaxRows() == 0) {
+            return limit;
+        } else {
+            return Math.min(limit, BackdoorToggles.getStatementMaxRows());
+        }
     }
 
     public void setLimit(int l) {
-        this.limit = l;
+        if (limit != Integer.MAX_VALUE) {
+            logger.warn("Setting limit to {} but in current olap context, the limit is already {}, won't apply", l,
+                    limit);
+        } else {
+            limit = l;
+        }
     }
 
+    //outer limit is sth like Statement.setMaxRows in JDBC
+    public void setOverlookOuterLimit() {
+        this.overlookOuterLimit = true;
+    }
+
+    //the offset here correspond to the offset concept in SQL
     public int getOffset() {
         return offset;
     }
@@ -95,12 +101,70 @@ public class StorageContext {
         this.offset = offset;
     }
 
-    public void enableLimit() {
-        this.enableLimit = true;
+    /**
+     * in contrast to the limit in SQL concept, "limit push down" means
+     * whether the limit is effective in storage level. Some queries are not possible 
+     * to leverage limit clause, checkout 
+     * {@link GTCubeStorageQueryBase#enableStorageLimitIfPossible(org.apache.kylin.cube.cuboid.Cuboid, java.util.Collection, java.util.Set, java.util.Collection, org.apache.kylin.metadata.filter.TupleFilter, java.util.Set, java.util.Collection, org.apache.kylin.storage.StorageContext)}
+     */
+    public boolean isLimitPushDownEnabled() {
+        return isValidPushDownLimit(finalPushDownLimit);
     }
 
-    public boolean isLimitEnabled() {
-        return this.enableLimit;
+    public static boolean isValidPushDownLimit(long finalPushDownLimit) {
+        return finalPushDownLimit < Integer.MAX_VALUE && finalPushDownLimit > 0;
+    }
+
+    public int getFinalPushDownLimit() {
+        return finalPushDownLimit;
+    }
+
+    public StorageLimitLevel getStorageLimitLevel() {
+        return storageLimitLevel;
+    }
+
+    public void applyLimitPushDown(IRealization realization, StorageLimitLevel storageLimitLevel) {
+
+        if (storageLimitLevel == StorageLimitLevel.NO_LIMIT) {
+            return;
+        }
+
+        if (!realization.supportsLimitPushDown()) {
+            logger.warn("Not enabling limit push down because cube storage type not supported");
+            return;
+        }
+
+        long temp = this.getOffset() + this.getLimit();
+
+        if (!isValidPushDownLimit(temp)) {
+            logger.warn("Not enabling limit push down because current limit is invalid: " + this.getLimit());
+            return;
+        }
+
+        this.finalPushDownLimit = (int) temp;
+        this.storageLimitLevel = storageLimitLevel;
+        logger.info("Enabling limit push down: {} at level: {}", temp, storageLimitLevel);
+    }
+
+    public boolean mergeSortPartitionResults() {
+        return mergeSortPartitionResults(finalPushDownLimit);
+    }
+
+    public static boolean mergeSortPartitionResults(int finalPushDownLimit) {
+        return isValidPushDownLimit(finalPushDownLimit);
+    }
+
+    public long getDeadline() {
+        return this.deadline;
+    }
+
+    public void setDeadline(IRealization realization) {
+        int timeout = realization.getConfig().getQueryTimeoutSeconds() * 1000;
+        if (timeout == 0) {
+            this.deadline = Long.MAX_VALUE;
+        } else {
+            this.deadline = timeout + System.currentTimeMillis();
+        }
     }
 
     public void markSort() {
@@ -119,12 +183,12 @@ public class StorageContext {
         return cuboid;
     }
 
-    public long getTotalScanCount() {
-        return totalScanCount.get();
+    public long getProcessedRowCount() {
+        return processedRowCount.get();
     }
 
-    public long increaseTotalScanCount(long count) {
-        return this.totalScanCount.addAndGet(count);
+    public long increaseProcessedRowCount(long count) {
+        return processedRowCount.addAndGet(count);
     }
 
     public boolean isAcceptPartialResult() {
@@ -141,6 +205,14 @@ public class StorageContext {
 
     public void setPartialResultReturned(boolean partialResultReturned) {
         this.partialResultReturned = partialResultReturned;
+    }
+
+    public boolean isNeedStorageAggregation() {
+        return needStorageAggregation;
+    }
+
+    public void setNeedStorageAggregation(boolean needStorageAggregation) {
+        this.needStorageAggregation = needStorageAggregation;
     }
 
     public void setExactAggregation(boolean isExactAggregation) {
@@ -165,5 +237,21 @@ public class StorageContext {
 
     public void setReusedPeriod(Range<Long> reusedPeriod) {
         this.reusedPeriod = reusedPeriod;
+    }
+
+    public IStorageQuery getStorageQuery() {
+        return storageQuery;
+    }
+
+    public void setStorageQuery(IStorageQuery storageQuery) {
+        this.storageQuery = storageQuery;
+    }
+
+    public boolean isStreamAggregateEnabled() {
+        return enableStreamAggregate;
+    }
+
+    public void enableStreamAggregate() {
+        this.enableStreamAggregate = true;
     }
 }

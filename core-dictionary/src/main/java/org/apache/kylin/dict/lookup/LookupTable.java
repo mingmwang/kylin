@@ -21,15 +21,18 @@ package org.apache.kylin.dict.lookup;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.commons.io.IOUtils;
 import org.apache.kylin.common.util.Array;
 import org.apache.kylin.common.util.Pair;
 import org.apache.kylin.metadata.model.TableDesc;
-import org.apache.kylin.source.ReadableTable;
-import org.apache.kylin.source.ReadableTable.TableReader;
+import org.apache.kylin.source.IReadableTable;
+import org.apache.kylin.source.IReadableTable.TableReader;
 
 import com.google.common.collect.Sets;
 
@@ -39,14 +42,14 @@ import com.google.common.collect.Sets;
  *
  * @author yangli9
  */
-abstract public class LookupTable<T extends Comparable<T>> {
+abstract public class LookupTable<T> {
 
     protected TableDesc tableDesc;
     protected String[] keyColumns;
-    protected ReadableTable table;
-    protected ConcurrentHashMap<Array<T>, T[]> data;
+    protected IReadableTable table;
+    protected Map<Array<T>, T[]> data;
 
-    public LookupTable(TableDesc tableDesc, String[] keyColumns, ReadableTable table) throws IOException {
+    public LookupTable(TableDesc tableDesc, String[] keyColumns, IReadableTable table) throws IOException {
         this.tableDesc = tableDesc;
         this.keyColumns = keyColumns;
         this.table = table;
@@ -66,7 +69,7 @@ abstract public class LookupTable<T extends Comparable<T>> {
                 initRow(reader.getRow(), keyIndex);
             }
         } finally {
-            reader.close();
+            IOUtils.closeQuietly(reader);
         }
     }
 
@@ -80,7 +83,7 @@ abstract public class LookupTable<T extends Comparable<T>> {
         Array<T> key = new Array<T>(keyCols);
 
         if (data.containsKey(key))
-            throw new IllegalStateException("Dup key found, key=" + toString(keyCols) + ", value1=" + toString(data.get(key)) + ", value2=" + toString(value));
+            throw new IllegalStateException("The table: " + tableDesc.getName() + " Dup key found, key=" + toString(keyCols) + ", value1=" + toString(data.get(key)) + ", value2=" + toString(value));
 
         data.put(key, value);
     }
@@ -109,15 +112,18 @@ abstract public class LookupTable<T extends Comparable<T>> {
     public Pair<T, T> mapRange(String col, T beginValue, T endValue, String returnCol) {
         int colIdx = tableDesc.findColumnByName(col).getZeroBasedIndex();
         int returnIdx = tableDesc.findColumnByName(returnCol).getZeroBasedIndex();
+        Comparator<T> colComp = getComparator(colIdx);
+        Comparator<T> returnComp = getComparator(returnIdx);
+
         T returnBegin = null;
         T returnEnd = null;
         for (T[] row : data.values()) {
-            if (between(beginValue, row[colIdx], endValue)) {
+            if (between(beginValue, row[colIdx], endValue, colComp)) {
                 T returnValue = row[returnIdx];
-                if (returnBegin == null || returnValue.compareTo(returnBegin) < 0) {
+                if (returnBegin == null || returnComp.compare(returnValue, returnBegin) < 0) {
                     returnBegin = returnValue;
                 }
-                if (returnEnd == null || returnValue.compareTo(returnEnd) > 0) {
+                if (returnEnd == null || returnComp.compare(returnValue, returnEnd) > 0) {
                     returnEnd = returnValue;
                 }
             }
@@ -140,9 +146,11 @@ abstract public class LookupTable<T extends Comparable<T>> {
         return result;
     }
 
-    private boolean between(T beginValue, T v, T endValue) {
-        return (beginValue == null || beginValue.compareTo(v) <= 0) && (endValue == null || v.compareTo(endValue) <= 0);
+    private boolean between(T beginValue, T v, T endValue, Comparator<T> comp) {
+        return (beginValue == null || comp.compare(beginValue, v) <= 0) && (endValue == null || comp.compare(v, endValue) <= 0);
     }
+
+    abstract protected Comparator<T> getComparator(int colIdx);
 
     public String toString() {
         return "LookupTable [path=" + table + "]";

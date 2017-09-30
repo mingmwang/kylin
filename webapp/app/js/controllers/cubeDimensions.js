@@ -18,7 +18,7 @@
 
 'use strict';
 
-KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cubesManager) {
+KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cubesManager,SweetAlert, VdmUtil) {
 
     $scope.cubeManager = cubesManager;
     // Available columns list derived from cube data model.
@@ -26,10 +26,6 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
     // Columns selected and disabled status bound to UI, group by table.
     $scope.selectedColumns = {};
-
-    // Available tables cache: 1st is the fact table, next are lookup tables.
-    $scope.availableTables = [];
-
 
     /**
      * Helper func to get columns that dimensions based on, three cases:
@@ -40,17 +36,10 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
     var dimCols = function (dim) {
         var referredCols = [];
 
-        // Case 3.
         if (dim.derived && dim.derived.length) {
             referredCols = referredCols.concat(dim.derived);
         }
 
-        // Case 2.
-        //if (dim.hierarchy && dim.column.length) {
-        //    referredCols = referredCols.concat(dim.column);
-        //}
-
-        // Case 1.
         if (!dim.derived && dim.column) {
             referredCols.push(dim.column);
         }
@@ -60,55 +49,46 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
     // Dump available columns plus column table name, whether is from lookup table.
     $scope.initColumns = function () {
-        var factTable = $scope.metaModel.model.fact_table;
+
+        var rootFactTable = VdmUtil.removeNameSpace($scope.metaModel.model.fact_table);
 
         // At first dump the columns of fact table.
-//        var cols = $scope.getColumnsByTable(factTable);
-        var cols = $scope.getDimColumnsByTable(factTable);
+
+        var cols = $scope.getDimColumnsByAlias(rootFactTable);
 
         // Initialize selected available.
-        var factAvailable = {};
         var factSelectAvailable = {};
 
         for (var i = 0; i < cols.length; i++) {
-            cols[i].table = factTable;
-            cols[i].isLookup = false;
-
-            factAvailable[cols[i].name] = cols[i];
+            cols[i].table = rootFactTable;
 
             // Default not selected and not disabled.
-            factSelectAvailable[cols[i].name] = {selected: false, disabled: false};
+            factSelectAvailable[cols[i].name] = {name:cols[i].name ,selected: false};
+
         }
 
-        $scope.availableColumns[factTable] = factAvailable;
-        $scope.selectedColumns[factTable] = factSelectAvailable;
-        $scope.availableTables.push(factTable);
-
+        $scope.availableColumns[rootFactTable] = cols;
+        factSelectAvailable.all=false;
+        $scope.selectedColumns[rootFactTable] = factSelectAvailable;
         // Then dump each lookup tables.
         var lookups = $scope.metaModel.model.lookups;
 
         for (var j = 0; j < lookups.length; j++) {
-            var cols2 = $scope.getDimColumnsByTable(lookups[j].table);
+            var cols2 = $scope.getDimColumnsByAlias(lookups[j].alias);
 
             // Initialize selected available.
-            var lookupAvailable = {};
             var lookupSelectAvailable = {};
 
             for (var k = 0; k < cols2.length; k++) {
-                cols2[k].table = lookups[j].table;
-                cols2[k].isLookup = true;
-
-                lookupAvailable[cols2[k].name] = cols2[k];
+                cols2[k].table = lookups[j].alias;
 
                 // Default not selected and not disabled.
-                lookupSelectAvailable[cols2[k].name] = {selected: false, disabled: false};
+                lookupSelectAvailable[cols2[k].name] = {name:cols2[k].name,selected: false};
             }
 
-            $scope.availableColumns[lookups[j].table] = lookupAvailable;
-            $scope.selectedColumns[lookups[j].table] = lookupSelectAvailable;
-            if($scope.availableTables.indexOf(lookups[j].table)==-1){
-                $scope.availableTables.push(lookups[j].table);
-            }
+            $scope.availableColumns[lookups[j].alias] = cols2;
+            lookupSelectAvailable.all=false;
+            $scope.selectedColumns[lookups[j].alias] = lookupSelectAvailable;
         }
     };
 
@@ -116,10 +96,22 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
     $scope.initColumnStatus = function () {
         angular.forEach($scope.cubeMetaFrame.dimensions, function (dim) {
             var cols = dimCols(dim);
-
             angular.forEach(cols, function (colName) {
-                $scope.selectedColumns[dim.table][colName] = {selected: true, disabled: true};
+              if(dim.derived){
+                 $scope.selectedColumns[dim.table][colName] = {name:dim.name, selected: true, normal:"false"};
+              }else{
+                 $scope.selectedColumns[dim.table][colName] = {name:dim.name, selected: true, normal:"true"};
+              }
             });
+        });
+        angular.forEach($scope.selectedColumns,function(value,table){
+              var all=true;
+              angular.forEach(value,function(col){
+                   if(col.selected==false&&typeof col=="object"){
+                        all=false;
+                   }
+             });
+             $scope.selectedColumns[table].all=all;
         });
     };
 
@@ -136,14 +128,14 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
     };
 
     // Init the dimension, dimension name default as the column key. TODO new cube schema change.
-    var Dimension = function (table, selectedCols, dimType) {
+    var Dimension = function (name, table, selectedCols, dimType) {
         var origin = {name: '', table: table,derived:null,column:null};
 
         switch (dimType) {
             case 'normal':
                 // Default name as 1st column name.
                 if (table && selectedCols.length) {
-                    origin.name = table + '.' + selectedCols[0];
+                    origin.name = name;
                 }
 
                 origin.column = selectedCols[0];
@@ -151,20 +143,11 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
             case 'derived':
                 if (table && selectedCols.length) {
-                    origin.name = table + '_derived';
+                    origin.name = name;
                 }
 
                 origin.derived = selectedCols;
                 break;
-
-            //case 'hierarchy':
-            //    if (table && selectedCols.length) {
-            //        origin.name = table + '_hierarchy';
-            //    }
-            //
-            //    origin.hierarchy = true;
-            //    origin.column = selectedCols;
-            //    break;
         }
 
         return origin;
@@ -177,10 +160,6 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
         if (dim.derived && dim.derived.length) {
             types.push('derived');
         }
-
-        //if (dim.hierarchy && dim.column.length) {
-        //    types.push('hierarchy');
-        //}
 
         if (!types.length) {
             types.push('normal');
@@ -207,9 +186,7 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
         });
 
         modalInstance.result.then(function () {
-            if (!$scope.dimState.editing) {
-                $scope.doneAddDim();
-            } else {
+            if ($scope.dimState.editing) {
                 $scope.doneEditDim();
             }
 
@@ -232,26 +209,6 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
         $scope.checkDimension = function(){
             var errors = [];
-            // null validate
-
-            //if($scope.dimType[0]=="hierarchy"){
-            //    if($scope.newDimension.column.length<2){
-            //        errors.push("Please define at least 2 hierarchy columns.");
-            //    }else{
-            //        for(var i = 0;i<$scope.newDimension.column.length;i++){
-            //            if($scope.newDimension.column[i]===""){
-            //                errors.push("Hierarchy value can't be null.");
-            //                break;
-            //            }
-            //        }
-            //        var _columns = angular.copy($scope.newDimension.column).sort();
-            //        for(var i = 0;i<_columns.length-1;i++){
-            //            if(_columns[i]==_columns[i+1]&&_columns[i]!==""){
-            //                errors.push("Duplicate column "+_columns[i]+".");
-            //            }
-            //        }
-            //    }
-            //}
 
             if($scope.dimType[0]=="derived"){
                 if(!$scope.newDimension.derived.length){
@@ -279,7 +236,6 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
                 errorInfo+="\n"+item;
             });
             if(errors.length){
-//                SweetAlert.swal('Warning!', errorInfo, '');
                 SweetAlert.swal('', errorInfo, 'warning');
                 return false;
             }else{
@@ -290,31 +246,31 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
     };
 
-    $scope.addDim = function (dimType) {
-        $scope.newDimension = Dimension('', [], dimType);
-
-        $scope.openDimModal(dimType);
-    };
-
     $scope.editDim = function (dim) {
         $scope.dimState.editingIndex = dimList.indexOf(dim);
         $scope.dimState.editing = true;
 
         // Make a copy of model will be editing.
         $scope.newDimension = angular.copy(dim);
+        if($scope.newDimension.derived&&$scope.newDimension.derived.length>0){
+          $scope.newDimension.normal="false";
+        }else{
+          $scope.newDimension.normal="true";
+        }
 
         $scope.openDimModal($scope.getDimType(dim));
     };
 
-    $scope.doneAddDim = function () {
-        // Push new dimension which bound user input data.
-        dimList.push(angular.copy($scope.newDimension));
-
-        $scope.resetParams();
-    };
-
     $scope.doneEditDim = function () {
         // Copy edited model to destination model.
+        if($scope.newDimension.derived&&($scope.newDimension.normal=="true")){
+           $scope.newDimension.column=$scope.newDimension.derived[0];
+           $scope.newDimension.derived=null;
+        }
+        if(!$scope.newDimension.derived&&($scope.newDimension.normal=="false")){
+           $scope.newDimension.derived=[$scope.newDimension.column];
+           $scope.newDimension.column=null;
+        }
         angular.copy($scope.newDimension, dimList[$scope.dimState.editingIndex]);
 
         $scope.resetParams();
@@ -329,7 +285,11 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
         var cols = dimCols(dim);
         angular.forEach(cols, function (colName) {
-            $scope.selectedColumns[dim.table][colName] = {selected: false, disabled: false};
+            if(dim.table==$scope.metaModel.model.fact_table){
+               $scope.selectedColumns[dim.table][colName] = {name:colName,selected: false};
+            }else{
+               $scope.selectedColumns[dim.table][colName] = {name:colName,selected: false};
+            }
         });
     };
 
@@ -376,12 +336,18 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
 
         angular.forEach($scope.selectedColumns, function (value, table) {
             angular.forEach(value, function (status, colName) {
-                if (status.selected && !status.disabled) {
+                if (status.selected) {
                     if (!selectedCols[table]) {
                         selectedCols[table] = [];
                     }
 
-                    selectedCols[table].push(colName);
+                    var cols={
+                         name:status.name,
+                         col:colName,
+                         normal:status.normal,
+                         selected:status.selected
+                    }
+                    selectedCols[table].push(cols);
                 }
             });
         });
@@ -392,30 +358,126 @@ KylinApp.controller('CubeDimensionsCtrl', function ($scope, $modal,MetaModel,cub
     // Auto generate dimensions.
     $scope.autoGenDims = function () {
         var selectedCols = $scope.getSelectedCols();
-
+        dimList=[];
         angular.forEach(selectedCols, function (cols, table) {
-            if ($scope.metaModel.model.fact_table == table) {
+            if ($scope.modelsManager.availableFactTables.indexOf(table)!=-1) {
                 // Fact table: for each selected column, create one normal dimension.
                 for (var i = 0; i < cols.length; i++) {
-                    dimList.push(Dimension(table, [cols[i]], 'normal'));
+                    dimList.push(Dimension(cols[i].name, table, [cols[i].col], 'normal'));
                 }
             } else {
                 // Per lookup table, create one derived dimension for all its selected columns;
-                if (cols.length) {
-                    dimList.push(Dimension(table, cols, 'derived'));
+                for (var i = 0; i < cols.length; i++) {
+                    if(cols[i].normal=="true"){
+                       dimList.push(Dimension(cols[i].name, table, [cols[i].col], 'normal'));
+                    }else{
+                        dimList.push(Dimension(cols[i].name, table, [cols[i].col], 'derived'));
+                    }
                 }
             }
         });
+        $scope.cubeMetaFrame.dimensions = dimList;
+
     };
+
+    $scope.autoChange = function(table,name){
+         if($scope.modelsManager.availableFactTables.indexOf(table)!=-1){
+               if($scope.selectedColumns[table][name].selected==false){
+                    $scope.selectedColumns[table].all=false;
+               }else{
+                    var all=true;
+                    angular.forEach($scope.selectedColumns[table],function(col){
+                          if(col.selected==false&&typeof col=="object"){
+                                 all=false;
+                          }
+                    });
+                    $scope.selectedColumns[table].all=all;
+               }
+         }
+         else{
+              if($scope.selectedColumns[table][name].selected==false){
+                   $scope.selectedColumns[table].all=false;
+                   $scope.selectedColumns[table][name].normal=null;
+                   $scope.selectedColumns[table][name].name=name;
+              }else{
+                   var all=true;
+                   angular.forEach($scope.selectedColumns[table],function(col){
+                       if(col.selected==false&&typeof col=="object"){
+                       all=false;
+                       }
+                   });
+                   $scope.selectedColumns[table].all=all;
+                   if($scope.metaModel.model.fact_table!=table){
+                       $scope.selectedColumns[table][name].normal="false";
+                   }
+              }
+         }
+    }
+
+    $scope.autoChangeAll= function(table){
+         if($scope.modelsManager.availableFactTables.indexOf(table)!=-1){
+              if($scope.selectedColumns[table].all==true){
+                   angular.forEach($scope.selectedColumns[table],function(col){
+                        if(typeof col==="object"){
+                           col.selected=true;
+                        }
+                   })
+              }else{
+                   angular.forEach($scope.selectedColumns[table],function(col){
+                        if(typeof col==="object"){
+                           col.selected=false;
+                        }
+                   })
+              }
+         }else{
+              if($scope.selectedColumns[table].all==true){
+                   angular.forEach($scope.selectedColumns[table],function(col){
+                        if(col.selected==false&&typeof col==="object"){
+                           col.selected=true;
+                           $scope.autoChange(table,col.name);
+                        }
+
+                   })
+              }else{
+                    angular.forEach($scope.selectedColumns[table],function(col){
+                        if(typeof col==="object"){
+                          col.selected=false;
+                          $scope.autoChange(table,col.name);
+                        }
+                    })
+              }
+         }
+    }
+    $scope.checkAutoDimension=function(){
+        var nameNull=false;
+        angular.forEach($scope.selectedColumns, function (value, table) {
+             angular.forEach(value, function (status, colName) {
+                  if (status.selected&&typeof status=="object") {
+                      if(status.name==""){
+                           SweetAlert.swal('', "The name is requested.", 'warning');
+                           nameNull=true;
+                       }
+
+                  }
+             });
+        });
+        if(nameNull==true){
+             return false;
+        }else{
+             return true;
+        }
+    }
 
     // Just reset the selected status of columns.
     $scope.resetGenDims = function () {
         var selectedCols = $scope.getSelectedCols();
-
-        angular.forEach(selectedCols, function (cols, table) {
-            for (var i = 0; i < cols.length; i++) {
-                $scope.selectedColumns[table][cols[i]].selected = false;
-            }
+        angular.forEach($scope.selectedColumns, function (value, table) {
+            angular.forEach(value, function (status, colName) {
+                if(typeof status=="object"){
+                    status.selected=false;
+                    status.normal=null;
+                }
+            });
         });
     };
 

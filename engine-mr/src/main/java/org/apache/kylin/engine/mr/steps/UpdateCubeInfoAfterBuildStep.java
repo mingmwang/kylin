@@ -18,20 +18,33 @@
 
 package org.apache.kylin.engine.mr.steps;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 
+import org.apache.commons.io.IOUtils;
+import org.apache.hadoop.fs.FSDataInputStream;
+import org.apache.hadoop.fs.FileSystem;
+import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.engine.mr.CubingJob;
+import org.apache.kylin.engine.mr.common.BatchConstants;
 import org.apache.kylin.job.exception.ExecuteException;
 import org.apache.kylin.job.execution.AbstractExecutable;
 import org.apache.kylin.job.execution.ExecutableContext;
 import org.apache.kylin.job.execution.ExecuteResult;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
+import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  */
 public class UpdateCubeInfoAfterBuildStep extends AbstractExecutable {
+    private static final Logger logger = LoggerFactory.getLogger(UpdateCubeInfoAfterBuildStep.class);
 
     public UpdateCubeInfoAfterBuildStep() {
         super();
@@ -43,19 +56,22 @@ public class UpdateCubeInfoAfterBuildStep extends AbstractExecutable {
         final CubeInstance cube = cubeManager.getCube(CubingExecutableUtil.getCubeName(this.getParams()));
         final CubeSegment segment = cube.getSegmentById(CubingExecutableUtil.getSegmentId(this.getParams()));
 
-        CubingJob cubingJob = (CubingJob) executableManager.getJob(CubingExecutableUtil.getCubingJobId(this.getParams()));
+        CubingJob cubingJob = (CubingJob) getManager().getJob(CubingExecutableUtil.getCubingJobId(this.getParams()));
         long sourceCount = cubingJob.findSourceRecordCount();
         long sourceSizeBytes = cubingJob.findSourceSizeBytes();
         long cubeSizeBytes = cubingJob.findCubeSizeBytes();
 
         segment.setLastBuildJobID(CubingExecutableUtil.getCubingJobId(this.getParams()));
-        segment.setIndexPath(CubingExecutableUtil.getIndexPath(this.getParams()));
         segment.setLastBuildTime(System.currentTimeMillis());
         segment.setSizeKB(cubeSizeBytes / 1024);
         segment.setInputRecords(sourceCount);
         segment.setInputRecordsSize(sourceSizeBytes);
 
         try {
+            if (segment.isOffsetCube()) {
+                updateTimeRange(segment);
+            }
+
             cubeManager.promoteNewlyBuiltSegments(cube, segment);
             return new ExecuteResult(ExecuteResult.State.SUCCEED, "succeed");
         } catch (IOException e) {
@@ -64,4 +80,37 @@ public class UpdateCubeInfoAfterBuildStep extends AbstractExecutable {
         }
     }
 
+    private void updateTimeRange(CubeSegment segment) throws IOException {
+        final TblColRef partitionCol = segment.getCubeDesc().getModel().getPartitionDesc().getPartitionDateColumnRef();
+
+        if (partitionCol == null) {
+            return;
+        }
+        final String factColumnsInputPath = this.getParams().get(BatchConstants.CFG_OUTPUT_PATH);
+        Path colDir = new Path(factColumnsInputPath, partitionCol.getIdentity());
+        FileSystem fs = HadoopUtil.getWorkingFileSystem();
+        Path outputFile = HadoopUtil.getFilterOnlyPath(fs, colDir, partitionCol.getName() + FactDistinctColumnsReducer.PARTITION_COL_INFO_FILE_POSTFIX);
+        if (outputFile == null) {
+            throw new IOException("fail to find the partition file in base dir: " + colDir);
+        }
+
+        FSDataInputStream is = null;
+        BufferedReader bufferedReader = null;
+        InputStreamReader isr = null;
+        long minValue, maxValue;
+        try {
+            is = fs.open(outputFile);
+            isr = new InputStreamReader(is);
+            bufferedReader = new BufferedReader(isr);
+            minValue = Long.parseLong(bufferedReader.readLine());
+            maxValue = Long.parseLong(bufferedReader.readLine());
+        } finally {
+            IOUtils.closeQuietly(is);
+            IOUtils.closeQuietly(isr);
+            IOUtils.closeQuietly(bufferedReader);
+        }
+        
+        logger.info("updateTimeRange step. minValue:" + minValue + " maxValue:" + maxValue);
+        segment.setTSRange(new TSRange(minValue, maxValue));
+    }
 }

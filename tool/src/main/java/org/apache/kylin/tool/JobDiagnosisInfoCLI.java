@@ -29,11 +29,13 @@ import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang.StringUtils;
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.persistence.ResourceTool;
 import org.apache.kylin.common.util.OptionsHelper;
 import org.apache.kylin.job.constant.ExecutableConstants;
 import org.apache.kylin.job.dao.ExecutableDao;
 import org.apache.kylin.job.dao.ExecutablePO;
-import org.apache.kylin.tool.util.ResourceStoreUtil;
+import org.apache.kylin.tool.util.ToolUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -54,6 +56,10 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
 
     @SuppressWarnings("static-access")
     private static final Option OPTION_INCLUDE_CLIENT = OptionBuilder.withArgName("includeClient").hasArg().isRequired(false).withDescription("Specify whether to include client info to extract. Default true.").create("includeClient");
+
+    @SuppressWarnings("static-access")
+    private static final Option OPTION_INCLUDE_CONF = OptionBuilder.withArgName("includeConf").hasArg().isRequired(false).withDescription("Specify whether to include conf files to extract. Default true.").create("includeConf");
+
     List<String> requiredResources = Lists.newArrayList();
     List<String> yarnLogsResources = Lists.newArrayList();
     private KylinConfig kylinConfig;
@@ -68,33 +74,35 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
         options.addOption(OPTION_INCLUDE_CUBE);
         options.addOption(OPTION_INCLUDE_CLIENT);
         options.addOption(OPTION_INCLUDE_YARN_LOGS);
+        options.addOption(OPTION_INCLUDE_CONF);
 
         kylinConfig = KylinConfig.getInstanceFromEnv();
         executableDao = ExecutableDao.getInstance(kylinConfig);
     }
 
-    public static void main(String args[]) {
+    public static void main(String[] args) {
         JobDiagnosisInfoCLI extractor = new JobDiagnosisInfoCLI();
         extractor.execute(args);
     }
 
     @Override
     protected void executeExtract(OptionsHelper optionsHelper, File exportDir) throws Exception {
-        String jobId = optionsHelper.getOptionValue(OPTION_JOB_ID);
+        String kylinJobId = optionsHelper.getOptionValue(OPTION_JOB_ID);
         boolean includeCube = optionsHelper.hasOption(OPTION_INCLUDE_CUBE) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_CUBE)) : true;
         boolean includeYarnLogs = optionsHelper.hasOption(OPTION_INCLUDE_YARN_LOGS) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_YARN_LOGS)) : true;
         boolean includeClient = optionsHelper.hasOption(OPTION_INCLUDE_CLIENT) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_CLIENT)) : true;
+        boolean includeConf = optionsHelper.hasOption(OPTION_INCLUDE_CONF) ? Boolean.valueOf(optionsHelper.getOptionValue(OPTION_INCLUDE_CONF)) : true;
 
         // dump job output
         logger.info("Start to dump job output");
-        ExecutablePO executablePO = executableDao.getJob(jobId);
-        addRequired(ResourceStoreUtil.concatJobPath(jobId));
-        addRequired(ResourceStoreUtil.concatJobOutputPath(jobId));
-        for (ExecutablePO task : executablePO.getTasks()) {
-            addRequired(ResourceStoreUtil.concatJobPath(task.getUuid()));
-            addRequired(ResourceStoreUtil.concatJobOutputPath(task.getUuid()));
+        ExecutablePO executablePO = executableDao.getJob(kylinJobId);
+        addRequired(ResourceStore.EXECUTE_RESOURCE_ROOT + "/" + kylinJobId);
+        addRequired(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT + "/" + kylinJobId);
+        for (ExecutablePO kylinTask : executablePO.getTasks()) {
+            addRequired(ResourceStore.EXECUTE_RESOURCE_ROOT + "/" + kylinTask.getUuid());
+            addRequired(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT + "/" + kylinTask.getUuid());
             if (includeYarnLogs) {
-                yarnLogsResources.add(task.getUuid());
+                yarnLogsResources.add(kylinTask.getUuid());
             }
         }
         extractResources(exportDir);
@@ -106,7 +114,6 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
                 File metaDir = new File(exportDir, "cube");
                 FileUtils.forceMkdir(metaDir);
                 String[] cubeMetaArgs = { "-cube", cubeName, "-destDir", new File(metaDir, cubeName).getAbsolutePath(), "-includeJobs", "false", "-compress", "false", "-submodule", "true" };
-
                 logger.info("Start to extract related cube: " + StringUtils.join(cubeMetaArgs));
                 CubeMetaExtractor cubeMetaExtractor = new CubeMetaExtractor();
                 logger.info("CubeMetaExtractor args: " + Arrays.toString(cubeMetaArgs));
@@ -114,13 +121,14 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
             }
         }
 
-        // dump yarn logs
+        // dump mr job info
         if (includeYarnLogs) {
-            logger.info("Start to dump yarn job logs: " + jobId);
-            File yarnLogDir = new File(exportDir, "yarn");
-            FileUtils.forceMkdir(yarnLogDir);
-            for (String taskId : yarnLogsResources) {
-                extractYarnLog(taskId, new File(yarnLogDir, jobId), true);
+            logger.info("Start to dump mr job info: " + kylinJobId);
+            File yarnDir = new File(exportDir, "yarn");
+            FileUtils.forceMkdir(yarnDir);
+            for (String stepId : yarnLogsResources) {
+                extractJobInfo(stepId, new File(yarnDir, stepId));
+                extractJobLog(stepId, new File(yarnDir, stepId), true);
             }
         }
 
@@ -129,6 +137,16 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
             ClientEnvExtractor clientEnvExtractor = new ClientEnvExtractor();
             logger.info("ClientEnvExtractor args: " + Arrays.toString(clientArgs));
             clientEnvExtractor.execute(clientArgs);
+        }
+
+        // export conf
+        if (includeConf) {
+            logger.info("Start to extract kylin conf files.");
+            try {
+                FileUtils.copyDirectoryToDirectory(new File(ToolUtil.getConfFolder()), exportDir);
+            } catch (Exception e) {
+                logger.warn("Error in export conf.", e);
+            }
         }
 
         // export kylin logs
@@ -147,14 +165,13 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
         try {
             KylinConfig srcConfig = KylinConfig.getInstanceFromEnv();
             KylinConfig dstConfig = KylinConfig.createInstanceFromUri(destDir.getAbsolutePath());
-
-            ResourceStoreUtil.copy(srcConfig, dstConfig, requiredResources);
+            ResourceTool.copy(srcConfig, dstConfig, requiredResources);
         } catch (Exception e) {
             throw new RuntimeException("Failed to extract job resources. ", e);
         }
     }
 
-    private void extractYarnLog(String taskId, File destDir, boolean onlyFail) throws Exception {
+    private void extractJobLog(String taskId, File destDir, boolean onlyFail) throws Exception {
         final Map<String, String> jobInfo = executableDao.getJobOutput(taskId).getInfo();
         FileUtils.forceMkdir(destDir);
         if (jobInfo.containsKey(ExecutableConstants.MR_JOB_ID)) {
@@ -169,6 +186,16 @@ public class JobDiagnosisInfoCLI extends AbstractInfoExtractor {
                     logger.warn("Failed to get yarn logs. ", ex);
                 }
             }
+        }
+    }
+
+    private void extractJobInfo(String taskId, File destDir) throws Exception {
+        final Map<String, String> jobInfo = executableDao.getJobOutput(taskId).getInfo();
+        if (jobInfo.containsKey(ExecutableConstants.MR_JOB_ID)) {
+            String mrJobId = jobInfo.get(ExecutableConstants.MR_JOB_ID);
+            FileUtils.forceMkdir(destDir);
+            String[] mrJobArgs = { "-mrJobId", mrJobId, "-destDir", destDir.getAbsolutePath(), "-compress", "false", "-submodule", "true" };
+            new MrJobInfoExtractor().execute(mrJobArgs);
         }
     }
 

@@ -32,6 +32,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 
@@ -46,24 +47,34 @@ public class JsonUtil {
         indentMapper.configure(SerializationFeature.INDENT_OUTPUT, true);
     }
 
-    public static <T> T readValue(File src, Class<T> valueType) throws IOException, JsonParseException, JsonMappingException {
+    public static <T> T readValue(File src, Class<T> valueType)
+            throws IOException, JsonParseException, JsonMappingException {
         return mapper.readValue(src, valueType);
     }
 
-    public static <T> T readValue(String content, Class<T> valueType) throws IOException, JsonParseException, JsonMappingException {
+    public static <T> T readValue(String content, Class<T> valueType)
+            throws IOException, JsonParseException, JsonMappingException {
         return mapper.readValue(content, valueType);
     }
 
-    public static <T> T readValue(Reader src, Class<T> valueType) throws IOException, JsonParseException, JsonMappingException {
+    public static <T> T readValue(Reader src, Class<T> valueType)
+            throws IOException, JsonParseException, JsonMappingException {
         return mapper.readValue(src, valueType);
     }
 
-    public static <T> T readValue(InputStream src, Class<T> valueType) throws IOException, JsonParseException, JsonMappingException {
+    public static <T> T readValue(InputStream src, Class<T> valueType)
+            throws IOException, JsonParseException, JsonMappingException {
         return mapper.readValue(src, valueType);
     }
 
-    public static <T> T readValue(byte[] src, Class<T> valueType) throws IOException, JsonParseException, JsonMappingException {
+    public static <T> T readValue(byte[] src, Class<T> valueType)
+            throws IOException, JsonParseException, JsonMappingException {
         return mapper.readValue(src, valueType);
+    }
+
+    public static <T> T readValue(String content, TypeReference<T> valueTypeRef)
+            throws IOException, JsonParseException, JsonMappingException {
+        return mapper.readValue(content, valueTypeRef);
     }
 
     public static Map<String, String> readValueAsMap(String content) throws IOException {
@@ -72,11 +83,17 @@ public class JsonUtil {
         return mapper.readValue(content, typeRef);
     }
 
-    public static void writeValueIndent(OutputStream out, Object value) throws IOException, JsonGenerationException, JsonMappingException {
+    public static JsonNode readValueAsTree(String content) throws IOException {
+        return mapper.readTree(content);
+    }
+
+    public static void writeValueIndent(OutputStream out, Object value)
+            throws IOException, JsonGenerationException, JsonMappingException {
         indentMapper.writeValue(out, value);
     }
 
-    public static void writeValue(OutputStream out, Object value) throws IOException, JsonGenerationException, JsonMappingException {
+    public static void writeValue(OutputStream out, Object value)
+            throws IOException, JsonGenerationException, JsonMappingException {
         mapper.writeValue(out, value);
     }
 

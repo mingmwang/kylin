@@ -20,6 +20,7 @@ package org.apache.kylin.dimension;
 
 import java.io.Externalizable;
 
+import org.apache.kylin.common.util.StringUtil;
 import org.apache.kylin.metadata.datatype.DataTypeSerializer;
 
 /**
@@ -32,10 +33,11 @@ import org.apache.kylin.metadata.datatype.DataTypeSerializer;
  * cannot work on DimensionEncoding.
  */
 public abstract class DimensionEncoding implements Externalizable {
+    private static final long serialVersionUID = 1L;
 
     // it's convention that all 0xff means NULL
     public static final byte NULL = (byte) 0xff;
-    
+
     public static boolean isNull(byte[] bytes, int offset, int length) {
         // all 0xFF is NULL
         if (length == 0) {
@@ -49,16 +51,28 @@ public abstract class DimensionEncoding implements Externalizable {
         return true;
     }
 
+    public static Object[] parseEncodingConf(String encoding) {
+        String[] parts = encoding.split("\\s*[(),:]\\s*");
+        if (parts == null || parts.length == 0 || parts[0].isEmpty())
+            throw new IllegalArgumentException("Not supported row key col encoding: '" + encoding + "'");
+
+        final String encodingName = parts[0];
+        final String[] encodingArgs = parts[parts.length - 1].isEmpty() //
+                ? StringUtil.subArray(parts, 1, parts.length - 1) : StringUtil.subArray(parts, 1, parts.length);
+
+        return new Object[] { encodingName, encodingArgs };
+    }
+
     /** return the fixed length of encoded bytes */
     abstract public int getLengthOfEncoding();
-    
-    /** encode given value (a string in byte form) to bytes, note the NULL convention */
-    abstract public void encode(byte[] value, int valueLen, byte[] output, int outputOffset);
-    
+
+    /** encode given value to bytes, note the NULL convention */
+    abstract public void encode(String value, byte[] output, int outputOffset);
+
     /** decode given bytes to value string, note the NULL convention */
     abstract public String decode(byte[] bytes, int offset, int len);
-    
+
     /** return a DataTypeSerializer that does the same encoding/decoding on ByteBuffer */
     abstract public DataTypeSerializer<Object> asDataTypeSerializer();
-    
+
 }

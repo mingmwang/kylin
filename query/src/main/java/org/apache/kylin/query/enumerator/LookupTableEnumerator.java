@@ -67,11 +67,11 @@ public class LookupTableEnumerator implements Enumerator<Object[]> {
             throw new IllegalStateException("No dimension with derived columns found for lookup table " + lookupTableName + ", cube desc " + cube.getDescriptor());
 
         CubeManager cubeMgr = CubeManager.getInstance(cube.getConfig());
-        LookupStringTable table = cubeMgr.getLookupTable(cube.getLatestReadySegment(), dim);
+        LookupStringTable table = cubeMgr.getLookupTable(cube.getLatestReadySegment(), dim.getJoin());
         this.allRows = table.getAllRows();
 
         OLAPTable olapTable = (OLAPTable) olapContext.firstTableScan.getOlapTable();
-        this.colDescs = olapTable.getExposedColumns();
+        this.colDescs = olapTable.getSourceColumns();
         this.current = new Object[colDescs.size()];
 
         reset();
@@ -86,7 +86,7 @@ public class LookupTableEnumerator implements Enumerator<Object[]> {
                 ColumnDesc colDesc = colDescs.get(i);
                 int colIdx = colDesc.getZeroBasedIndex();
                 if (colIdx >= 0) {
-                    current[i] = Tuple.convertOptiqCellValue(row[colIdx], colDesc.getType().getName());
+                    current[i] = Tuple.convertOptiqCellValue(row[colIdx], colDesc.getUpgradedType().getName());
                 } else {
                     current[i] = null; // fake column
                 }

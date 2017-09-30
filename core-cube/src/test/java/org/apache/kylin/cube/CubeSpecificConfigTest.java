@@ -19,36 +19,15 @@
 package org.apache.kylin.cube;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertTrue;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.util.Arrays;
-
+import org.apache.kylin.common.HotLoadKylinPropertiesTestCase;
 import org.apache.kylin.common.KylinConfig;
-import org.apache.kylin.common.util.JsonUtil;
-import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.cube.model.validation.IValidatorRule;
-import org.apache.kylin.cube.model.validation.ValidateContext;
-import org.apache.kylin.cube.model.validation.rule.AggregationGroupRule;
-import org.junit.After;
-import org.junit.Before;
 import org.junit.Test;
 
-public class CubeSpecificConfigTest extends LocalFileMetadataTestCase {
+import java.io.IOException;
 
-    @Before
-    public void setUp() throws Exception {
-        this.createTestMetadata();
-    }
-
-    @After
-    public void after() throws Exception {
-        this.cleanupTestMetadata();
-    }
-
+public class CubeSpecificConfigTest extends HotLoadKylinPropertiesTestCase {
     @Test
     public void test() {
         KylinConfig baseConfig = KylinConfig.getInstanceFromEnv();
@@ -64,7 +43,27 @@ public class CubeSpecificConfigTest extends LocalFileMetadataTestCase {
     }
 
     private void verifyOverride(KylinConfig base, KylinConfig override) {
-        assertEquals("gzip", base.getHbaseDefaultCompressionCodec());
+        assertEquals("snappy", base.getHbaseDefaultCompressionCodec());
         assertEquals("lz4", override.getHbaseDefaultCompressionCodec());
+    }
+
+    @Test
+    public void testPropertiesHotLoad() throws IOException {
+        KylinConfig baseConfig = KylinConfig.getInstanceFromEnv();
+        KylinConfig oldCubeDescConfig = CubeDescManager.getInstance(baseConfig).getCubeDesc("ssb").getConfig();
+        assertEquals(10, oldCubeDescConfig.getMaxConcurrentJobLimit());
+
+        //hot load Properties
+        updateProperty("kylin.job.max-concurrent-jobs", "20");
+        KylinConfig.getInstanceFromEnv().reloadFromSiteProperties();
+        CubeDescManager.getInstance(baseConfig).reloadCubeDescLocal("ssb");
+
+        //test cubeDescConfig
+        KylinConfig newCubeDescConfig = CubeDescManager.getInstance(baseConfig).getCubeDesc("ssb").getConfig();
+        assertEquals(20, newCubeDescConfig.getMaxConcurrentJobLimit());
+
+        //test cubeConfig
+        KylinConfig newCubeConfig = CubeManager.getInstance(baseConfig).getCube("ssb").getConfig();
+        assertEquals(20, newCubeConfig.getMaxConcurrentJobLimit());
     }
 }

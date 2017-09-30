@@ -20,28 +20,35 @@ package org.apache.kylin.source.hive;
 
 import java.io.IOException;
 
+
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.util.Pair;
 import org.apache.kylin.engine.mr.DFSFileTable;
 import org.apache.kylin.metadata.model.TableDesc;
-import org.apache.kylin.source.ReadableTable;
+import org.apache.kylin.source.IReadableTable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
  */
-public class HiveTable implements ReadableTable {
+public class HiveTable implements IReadableTable {
 
     private static final Logger logger = LoggerFactory.getLogger(HiveTable.class);
 
     final private String database;
     final private String hiveTable;
 
-    private HiveClient hiveClient;
+    private IHiveClient hiveClient;
+    private HiveTableMeta hiveTableMeta;
 
     public HiveTable(TableDesc tableDesc) {
         this.database = tableDesc.getDatabase();
         this.hiveTable = tableDesc.getName();
+        try {
+            this.hiveTableMeta = getHiveClient().getHiveTableMeta(database, hiveTable);
+        } catch (Exception e) {
+            throw new RuntimeException("cannot get HiveTableMeta", e);
+        }
     }
 
     @Override
@@ -58,7 +65,7 @@ public class HiveTable implements ReadableTable {
             long lastModified = sizeAndLastModified.getSecond();
 
             // for non-native hive table, cannot rely on size & last modified on HDFS
-            if (getHiveClient().isNativeTable(database, hiveTable) == false) {
+            if (this.hiveTableMeta.isNative == false) {
                 lastModified = System.currentTimeMillis(); // assume table is ever changing
             }
 
@@ -71,6 +78,11 @@ public class HiveTable implements ReadableTable {
                 throw new IOException(e);
         }
     }
+    
+    @Override
+    public boolean exists() {
+        return true;
+    }
 
     private String computeHDFSLocation() throws Exception {
 
@@ -80,13 +92,13 @@ public class HiveTable implements ReadableTable {
             return override;
         }
 
-        return getHiveClient().getHiveTableLocation(database, hiveTable);
+        return this.hiveTableMeta.sdLocation;
     }
 
-    public HiveClient getHiveClient() {
+    public IHiveClient getHiveClient() {
 
         if (hiveClient == null) {
-            hiveClient = new HiveClient();
+            hiveClient = HiveClientFactory.getHiveClient();
         }
         return hiveClient;
     }

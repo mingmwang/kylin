@@ -30,9 +30,9 @@ import java.util.Map;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
-import org.apache.kylin.measure.hllc.HyperLogLogPlusCounter;
-import org.apache.kylin.cube.kv.RowConstants;
 import org.apache.kylin.engine.mr.KylinReducer;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.apache.kylin.measure.hllc.HLLCounter;
 
 /**
  * @author Jack
@@ -41,34 +41,34 @@ import org.apache.kylin.engine.mr.KylinReducer;
 public class ColumnCardinalityReducer extends KylinReducer<IntWritable, BytesWritable, IntWritable, LongWritable> {
 
     public static final int ONE = 1;
-    private Map<Integer, HyperLogLogPlusCounter> hllcMap = new HashMap<Integer, HyperLogLogPlusCounter>();
+    private Map<Integer, HLLCounter> hllcMap = new HashMap<Integer, HLLCounter>();
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
     }
 
     @Override
-    public void reduce(IntWritable key, Iterable<BytesWritable> values, Context context) throws IOException, InterruptedException {
+    public void doReduce(IntWritable key, Iterable<BytesWritable> values, Context context) throws IOException, InterruptedException {
         int skey = key.get();
         for (BytesWritable v : values) {
             ByteBuffer buffer = ByteBuffer.wrap(v.getBytes());
-            HyperLogLogPlusCounter hll = new HyperLogLogPlusCounter();
+            HLLCounter hll = new HLLCounter();
             hll.readRegisters(buffer);
             getHllc(skey).merge(hll);
             hll.clear();
         }
     }
 
-    private HyperLogLogPlusCounter getHllc(Integer key) {
+    private HLLCounter getHllc(Integer key) {
         if (!hllcMap.containsKey(key)) {
-            hllcMap.put(key, new HyperLogLogPlusCounter());
+            hllcMap.put(key, new HLLCounter());
         }
         return hllcMap.get(key);
     }
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
+    protected void doCleanup(Context context) throws IOException, InterruptedException {
         List<Integer> keys = new ArrayList<Integer>();
         Iterator<Integer> it = hllcMap.keySet().iterator();
         while (it.hasNext()) {
@@ -78,15 +78,12 @@ public class ColumnCardinalityReducer extends KylinReducer<IntWritable, BytesWri
         it = keys.iterator();
         while (it.hasNext()) {
             int key = it.next();
-            HyperLogLogPlusCounter hllc = hllcMap.get(key);
-            ByteBuffer buf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
+            HLLCounter hllc = hllcMap.get(key);
+            ByteBuffer buf = ByteBuffer.allocate(BufferedMeasureCodec.DEFAULT_BUFFER_SIZE);
             buf.clear();
             hllc.writeRegisters(buf);
             buf.flip();
             context.write(new IntWritable(key), new LongWritable(hllc.getCountEstimate()));
-            // context.write(new Text("ErrorRate_" + key), new
-            // LongWritable((long)hllc.getErrorRate()));
         }
-
     }
 }

@@ -28,6 +28,11 @@ KylinApp.controller('ModelSchemaCtrl', function ($scope, QueryService, UserServi
 
   $scope.forms = {};
 
+  // ~ init
+  if (!$scope.state) {
+    $scope.state = {mode: "view"};
+  }
+
 
   $scope.wizardSteps = [
     {title: 'Model Info', src: 'partials/modelDesigner/model_info.html', isComplete: false, form: 'model_info_form'},
@@ -54,11 +59,6 @@ KylinApp.controller('ModelSchemaCtrl', function ($scope, QueryService, UserServi
 
   $scope.curStep = $scope.wizardSteps[0];
 
-
-  // ~ init
-  if (!$scope.state) {
-    $scope.state = {mode: "view"};
-  }
   //init modelsManager
   if ($scope.state.mode == "edit") {
     var defer = $q.defer();
@@ -238,35 +238,10 @@ KylinApp.controller('ModelSchemaCtrl', function ($scope, QueryService, UserServi
    * 1.metric can't be null
    */
   $scope.check_model_measure = function () {
-
-    var errors = [];
-    if (!modelsManager.selectedModel.metrics || !modelsManager.selectedModel.metrics.length) {
-      errors.push("Please define your metrics.");
-    }
-    var errorInfo = "";
-    angular.forEach(errors, function (item) {
-      errorInfo += "\n" + item;
-    });
-    if (errors.length) {
-      SweetAlert.swal('', errorInfo, 'warning');
-      return false;
-    } else {
-      return true;
-    }
-
+    return true;
   };
   $scope.check_model_setting = function () {
-    var errors = [];
-    var errorInfo = "";
-    angular.forEach(errors, function (item) {
-      errorInfo += "\n" + item;
-    });
-    if (errors.length) {
-      SweetAlert.swal('', errorInfo, 'warning');
-      return false;
-    } else {
-      return true;
-    }
+    return true;
   }
 
 

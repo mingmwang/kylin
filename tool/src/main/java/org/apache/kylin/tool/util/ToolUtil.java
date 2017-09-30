@@ -19,21 +19,16 @@
 
 package org.apache.kylin.tool.util;
 
+import com.google.common.collect.Maps;
+import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.persistence.ResourceStore;
+
 import java.io.File;
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.util.Map;
-
-import org.apache.commons.lang.StringUtils;
-import org.apache.hadoop.hbase.HBaseConfiguration;
-import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.TableName;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.kylin.common.KylinConfig;
-import org.apache.kylin.common.KylinVersion;
-import org.apache.kylin.engine.mr.HadoopUtil;
-import org.apache.kylin.storage.hbase.HBaseConnection;
-
-import com.google.common.collect.Maps;
 
 public class ToolUtil {
     public static String getConfFolder() {
@@ -46,17 +41,13 @@ public class ToolUtil {
         if (StringUtils.isNotEmpty(path)) {
             return path + File.separator + CONF;
         }
-        return null;
+        throw new RuntimeException("Cannot find conf folder.");
     }
 
-    public static String getHBaseMetaStoreId() throws IOException {
-        try (final HBaseAdmin hbaseAdmin = new HBaseAdmin(HBaseConfiguration.create(HadoopUtil.getCurrentConfiguration()))) {
-            final String metaStoreName = KylinConfig.getInstanceFromEnv().getMetadataUrlPrefix();
-            final HTableDescriptor desc = hbaseAdmin.getTableDescriptor(TableName.valueOf(metaStoreName));
-            return desc.getValue(HBaseConnection.HTABLE_UUID_TAG);
-        } catch (Exception e) {
-            return null;
-        }
+    public static String getMetaStoreId() throws IOException {
+        KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();
+        ResourceStore store = ResourceStore.getStore(kylinConfig);
+        return store.getMetaStoreUUID();
     }
 
     public static String decideKylinMajorVersionFromCommitFile() {
@@ -71,4 +62,27 @@ public class ToolUtil {
         return null;
     }
 
+    public static String getHostName() {
+        String hostname = System.getenv("COMPUTERNAME");
+        if (StringUtils.isEmpty(hostname)) {
+            InetAddress address = null;
+            try {
+                address = InetAddress.getLocalHost();
+                hostname = address.getHostName();
+                if (StringUtils.isEmpty(hostname)) {
+                    hostname = address.getHostAddress();
+                }
+            } catch (UnknownHostException uhe) {
+                String host = uhe.getMessage(); // host = "hostname: hostname"
+                if (host != null) {
+                    int colon = host.indexOf(':');
+                    if (colon > 0) {
+                        return host.substring(0, colon);
+                    }
+                }
+                hostname = "Unknown";
+            }
+        }
+        return hostname;
+    }
 }

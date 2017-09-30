@@ -28,6 +28,7 @@ import org.apache.kylin.common.persistence.ResourceStore;
 public class LocalFileMetadataTestCase extends AbstractKylinTestCase {
 
     public static String LOCALMETA_TEST_DATA = "../examples/test_case_data/localmeta";
+    public static String LOCALMETA_TEMP_DATA = "../examples/test_metadata/";
 
     @Override
     public void createTestMetadata() {
@@ -45,7 +46,7 @@ public class LocalFileMetadataTestCase extends AbstractKylinTestCase {
     public static void staticCreateTestMetadata(String testDataFolder) {
         KylinConfig.destroyInstance();
 
-        String tempTestMetadataUrl = "../examples/test_metadata";
+        String tempTestMetadataUrl = LOCALMETA_TEMP_DATA;
         try {
             FileUtils.deleteDirectory(new File(tempTestMetadataUrl));
             FileUtils.copyDirectory(new File(testDataFolder), new File(tempTestMetadataUrl));
@@ -56,15 +57,18 @@ public class LocalFileMetadataTestCase extends AbstractKylinTestCase {
         if (System.getProperty(KylinConfig.KYLIN_CONF) == null && System.getenv(KylinConfig.KYLIN_CONF) == null)
             System.setProperty(KylinConfig.KYLIN_CONF, tempTestMetadataUrl);
 
-        KylinConfig.getInstanceFromEnv().setMetadataUrl(tempTestMetadataUrl);
+        KylinConfig config = KylinConfig.getInstanceFromEnv();
+        config.setMetadataUrl(tempTestMetadataUrl);
+        config.setProperty("kylin.env.hdfs-working-dir", "file:///tmp/kylin");
     }
 
     public static void cleanAfterClass() {
-        String tempTestMetadataUrl = "../examples/test_metadata";
+        File directory = new File(LOCALMETA_TEMP_DATA);
         try {
-            FileUtils.deleteDirectory(new File(tempTestMetadataUrl));
+            FileUtils.deleteDirectory(directory);
         } catch (IOException e) {
-            throw new IllegalStateException("Can't delete directory " + tempTestMetadataUrl, e);
+            if (directory.exists() && directory.list().length > 0)
+                throw new IllegalStateException("Can't delete directory " + directory, e);
         }
         staticCleanupTestMetadata();
     }
@@ -72,6 +76,17 @@ public class LocalFileMetadataTestCase extends AbstractKylinTestCase {
     @Override
     public void cleanupTestMetadata() {
         cleanAfterClass();
+    }
+    
+    protected String getLocalWorkingDirectory() {
+        String dir = KylinConfig.getInstanceFromEnv().getHdfsWorkingDirectory();
+        if (dir.startsWith("file://"))
+            dir = dir.substring("file://".length());
+        try {
+            return new File(dir).getCanonicalPath();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     protected ResourceStore getStore() {

@@ -18,22 +18,22 @@
 
 package org.apache.kylin.measure;
 
-import java.nio.ByteBuffer;
-import java.util.Collection;
-
 import org.apache.kylin.metadata.datatype.DataType;
 import org.apache.kylin.metadata.datatype.DataTypeSerializer;
 import org.apache.kylin.metadata.model.MeasureDesc;
+
+import java.nio.ByteBuffer;
+import java.util.Collection;
 
 /**
  * @author yangli9
  * 
  */
-@SuppressWarnings({ "rawtypes", "unchecked" })
-public class MeasureCodec {
+@SuppressWarnings({ "rawtypes" })
+public class MeasureCodec implements java.io.Serializable {
 
-    int nMeasures;
-    DataTypeSerializer[] serializers;
+    private int nMeasures;
+    private DataTypeSerializer[] serializers;
 
     public MeasureCodec(Collection<MeasureDesc> measureDescs) {
         this((MeasureDesc[]) measureDescs.toArray(new MeasureDesc[measureDescs.size()]));
@@ -47,8 +47,8 @@ public class MeasureCodec {
         init(dataTypes);
     }
 
-    public MeasureCodec(DataType... dateTypes) {
-        init(dateTypes);
+    public MeasureCodec(DataType... dataTypes) {
+        init(dataTypes);
     }
 
     public MeasureCodec(String... dataTypes) {
@@ -72,8 +72,23 @@ public class MeasureCodec {
         }
     }
 
-    public DataTypeSerializer getSerializer(int idx) {
-        return serializers[idx];
+    public void encode(int idx, Object o, ByteBuffer buf) {
+        serializers[idx].serialize(o, buf);
+    }
+
+    public int getMeasuresCount() {
+        return nMeasures;
+    }
+
+    public int[] getPeekLength(ByteBuffer buf) {
+        int[] length = new int[nMeasures];
+        int offset = 0;
+        for (int i = 0; i < nMeasures; i++) {
+            length[i] = serializers[i].peekLength(buf);
+            offset += length[i];
+            buf.position(offset);
+        }
+        return length;
     }
 
     public void decode(ByteBuffer buf, Object[] result) {
@@ -83,10 +98,4 @@ public class MeasureCodec {
         }
     }
 
-    public void encode(Object[] values, ByteBuffer out) {
-        assert values.length == nMeasures;
-        for (int i = 0; i < nMeasures; i++) {
-            serializers[i].serialize(values[i], out);
-        }
-    }
 }

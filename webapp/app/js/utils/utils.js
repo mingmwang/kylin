@@ -63,6 +63,112 @@ KylinApp.factory('VdmUtil', function ($modal, $timeout, $location, $anchorScroll
         if (new RegExp("(" + k + ")").test(fmt)) fmt = fmt.replace(RegExp.$1, (RegExp.$1.length == 1) ? (o[k]) : (("00" + o[k]).substr(("" + o[k]).length)));
 
       return fmt;
+    },
+
+    SCToFloat:function(data){
+      var resultValue = "";
+      if (data&&data.indexOf('E') != -1){
+        var regExp = new RegExp('^((\\d+.?\\d+)[Ee]{1}(\\d+))$', 'ig');
+        var result = regExp.exec(data);
+        var power = "";
+        if (result != null){
+          resultValue = result[2];
+          power = result[3];
+        }
+        if (resultValue != ""){
+          if (power != ""){
+            var powVer = Math.pow(10, power);
+            resultValue = (resultValue * powVer).toFixed(2);
+          }
+        }
+      }
+      return resultValue;
+    },
+    getFilterObjectListByOrFilterVal:function(objList,key,val,orKey,orVal){
+      var len=objList&&objList.length|| 0,newArr=[];
+      for(var i=0;i<len;i++){
+        if((key&&val===objList[i][key])||(orKey&&objList[i][orKey]===orVal)){
+          newArr.push(objList[i]);
+        }
+      }
+      return newArr;
+    },
+    removeFilterObjectList:function(objList,key,val){
+      var len=objList&&objList.length|| 0,newArr=[];
+      for(var i=0;i<len;i++){
+        if(key&&val!=objList[i][key]){
+          newArr.push(objList[i]);
+        }
+      }
+      return newArr;
+    },
+    //过滤对象中的空值
+    filterNullValInObj:function(needFilterObj){
+      var newFilterObj,newObj;
+      if(typeof needFilterObj=='string'){
+        newObj=angular.fromJson(needFilterObj);
+      }else{
+        newObj=angular.extend({},needFilterObj);
+      }
+      function filterData(data){
+        var obj=data;
+        for(var i in obj){
+          if(obj[i]===null){
+            if(Object.prototype.toString.call(obj)=='[object Object]'){
+              delete obj[i];
+            }
+          }
+          else if(typeof obj[i]=== 'object'){
+            obj[i]=filterData(obj[i]);
+          }
+        }
+        return obj;
+      }
+      return angular.toJson(filterData(newObj),true);
+    },
+    getObjectList:function(objList,key,valueList){
+      var len=objList&&objList.length|| 0,newArr=[];
+      for(var i=0;i<len;i++){
+        if(angular.isArray(valueList)&&valueList.indexOf(objList[i][key])>-1){
+          newArr.push(objList[i]);
+        }
+      }
+      return newArr;
+    },
+    getObjValFromLikeKey:function(obj,key){
+      if(!key){
+        return [];
+      }
+      for(var i in obj){
+        if(key.startsWith(i)){
+          return angular.copy(obj[i]);
+        }
+      }
+      return [];
+    },
+    removeNameSpace:function(str){
+      if(str){
+         return str.replace(/([^.\s]+\.)+/,'');
+      }else{
+        return '';
+      }
+    },
+    getNameSpaceTopName:function(str){
+      if(str){
+         return str.replace(/(\.[^.]+)/,'');
+      }else{
+        return '';
+      }
+    },
+    getNameSpaceAliasName:function(str){
+      if(str){
+         return str.replace(/\.[^.]+$/,'');
+      }else{
+        return '';
+      }
+    },
+    isNotExtraKey:function(obj,key){
+      return obj&&key&&key!="$promise"&&key!='$resolved'&&obj.hasOwnProperty(key);
     }
   }
 });

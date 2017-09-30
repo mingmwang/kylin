@@ -18,6 +18,13 @@
 
 package org.apache.kylin.source.hive.cardinality;
 
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.StringWriter;
+import java.util.ArrayList;
+import java.util.Iterator;
+import java.util.List;
+
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
@@ -30,19 +37,12 @@ import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
-import org.apache.kylin.metadata.MetadataConstants;
 import org.apache.kylin.metadata.MetadataManager;
+import org.apache.kylin.metadata.model.TableExtDesc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.io.InputStream;
-import java.io.StringWriter;
-import java.util.ArrayList;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
 
 /**
  * This job will update save the cardinality result into Kylin table metadata store.
@@ -50,14 +50,12 @@ import java.util.Map;
  * @author shaoshi
  */
 public class HiveColumnCardinalityUpdateJob extends AbstractHadoopJob {
+    private static final Logger logger = LoggerFactory.getLogger(HiveColumnCardinalityUpdateJob.class);
+
     public static final String JOB_TITLE = "Kylin Hive Column Cardinality Update Job";
 
     @SuppressWarnings("static-access")
     protected static final Option OPTION_TABLE = OptionBuilder.withArgName("table name").hasArg().isRequired(true).withDescription("The hive table name").create("table");
-
-    private String table;
-
-    private static final Logger logger = LoggerFactory.getLogger(HiveColumnCardinalityUpdateJob.class);
 
     public HiveColumnCardinalityUpdateJob() {
 
@@ -69,19 +67,22 @@ public class HiveColumnCardinalityUpdateJob extends AbstractHadoopJob {
         Options options = new Options();
 
         try {
+            options.addOption(OPTION_PROJECT);
             options.addOption(OPTION_TABLE);
             options.addOption(OPTION_OUTPUT_PATH);
 
             parseOptions(options, args);
 
-            this.table = getOptionValue(OPTION_TABLE).toUpperCase();
+            String project = getOptionValue(OPTION_PROJECT);
+            String table = getOptionValue(OPTION_TABLE).toUpperCase();
+            
             // start job
             String jobName = JOB_TITLE + getOptionsAsString();
             logger.info("Starting: " + jobName);
             Configuration conf = getConf();
             Path output = new Path(getOptionValue(OPTION_OUTPUT_PATH));
 
-            updateKylinTableExd(table.toUpperCase(), output.toString(), conf);
+            updateKylinTableExd(table.toUpperCase(), output.toString(), conf, project);
             return 0;
         } catch (Exception e) {
             printUsage(options);
@@ -90,7 +91,7 @@ public class HiveColumnCardinalityUpdateJob extends AbstractHadoopJob {
 
     }
 
-    public void updateKylinTableExd(String tableName, String outPath, Configuration config) throws IOException {
+    public void updateKylinTableExd(String tableName, String outPath, Configuration config, String prj) throws IOException {
         List<String> columns = null;
         try {
             columns = readLines(new Path(outPath), config);
@@ -117,16 +118,16 @@ public class HiveColumnCardinalityUpdateJob extends AbstractHadoopJob {
         if (scardi.length() > 0) {
             scardi = scardi.substring(0, scardi.length() - 1);
             MetadataManager metaMgr = MetadataManager.getInstance(KylinConfig.getInstanceFromEnv());
-            Map<String, String> tableExd = metaMgr.getTableDescExd(tableName);
-            tableExd.put(MetadataConstants.TABLE_EXD_CARDINALITY, scardi);
-            metaMgr.saveTableExd(tableName.toUpperCase(), tableExd);
+            TableExtDesc tableExt = metaMgr.getTableExt(tableName, prj);
+            tableExt.setCardinality(scardi);
+            metaMgr.saveTableExt(tableExt, prj);
         } else {
             throw new IllegalArgumentException("No cardinality data is collected for table " + tableName);
         }
     }
 
     private static List<String> readLines(Path location, Configuration conf) throws Exception {
-        FileSystem fileSystem = FileSystem.get(location.toUri(), conf);
+        FileSystem fileSystem = HadoopUtil.getWorkingFileSystem();
         CompressionCodecFactory factory = new CompressionCodecFactory(conf);
         FileStatus[] items = fileSystem.listStatus(location);
         if (items == null)

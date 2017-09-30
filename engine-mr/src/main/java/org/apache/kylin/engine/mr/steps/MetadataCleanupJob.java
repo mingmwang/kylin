@@ -18,7 +18,10 @@
 
 package org.apache.kylin.engine.mr.steps;
 
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.NavigableSet;
+import java.util.Set;
 
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
@@ -28,10 +31,10 @@ import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
-import org.apache.kylin.job.constant.JobStatusEnum;
 import org.apache.kylin.job.dao.ExecutableDao;
 import org.apache.kylin.job.dao.ExecutableOutputPO;
 import org.apache.kylin.job.dao.ExecutablePO;
+import org.apache.kylin.job.execution.ExecutableState;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -40,6 +43,7 @@ import com.google.common.collect.Sets;
 
 /**
  */
+@Deprecated
 public class MetadataCleanupJob extends AbstractHadoopJob {
 
     @SuppressWarnings("static-access")
@@ -51,8 +55,8 @@ public class MetadataCleanupJob extends AbstractHadoopJob {
 
     private KylinConfig config = null;
 
-    public static final long TIME_THREADSHOLD = 2 * 24 * 3600 * 1000l; // 2 days
-    public static final long TIME_THREADSHOLD_FOR_JOB = 30 * 24 * 3600 * 1000l; // 30 days
+    public static final long TIME_THREADSHOLD = 1 * 3600 * 1000L; // 1 hour
+    public static final long TIME_THREADSHOLD_FOR_JOB = 30 * 24 * 3600 * 1000L; // 30 days
 
     /*
      * (non-Javadoc)
@@ -64,23 +68,18 @@ public class MetadataCleanupJob extends AbstractHadoopJob {
         Options options = new Options();
 
         logger.info("jobs args: " + Arrays.toString(args));
-        try {
-            options.addOption(OPTION_DELETE);
-            parseOptions(options, args);
+        options.addOption(OPTION_DELETE);
+        parseOptions(options, args);
 
-            logger.info("options: '" + getOptionsAsString() + "'");
-            logger.info("delete option value: '" + getOptionValue(OPTION_DELETE) + "'");
-            delete = Boolean.parseBoolean(getOptionValue(OPTION_DELETE));
+        logger.info("options: '" + getOptionsAsString() + "'");
+        logger.info("delete option value: '" + getOptionValue(OPTION_DELETE) + "'");
+        delete = Boolean.parseBoolean(getOptionValue(OPTION_DELETE));
 
-            config = KylinConfig.getInstanceFromEnv();
+        config = KylinConfig.getInstanceFromEnv();
 
-            cleanup();
+        cleanup();
 
-            return 0;
-        } catch (Exception e) {
-            printUsage(options);
-            throw e;
-        }
+        return 0;
     }
 
     private ResourceStore getStore() {
@@ -98,15 +97,6 @@ public class MetadataCleanupJob extends AbstractHadoopJob {
     public void cleanup() throws Exception {
         CubeManager cubeManager = CubeManager.getInstance(config);
 
-        Set<String> activeResourceList = Sets.newHashSet();
-        for (org.apache.kylin.cube.CubeInstance cube : cubeManager.listAllCubes()) {
-            for (org.apache.kylin.cube.CubeSegment segment : cube.getSegments()) {
-                activeResourceList.addAll(segment.getSnapshotPaths());
-                activeResourceList.addAll(segment.getDictionaryPaths());
-                activeResourceList.add(segment.getStatisticsResourcePath());
-            }
-        }
-
         List<String> toDeleteResource = Lists.newArrayList();
 
         // two level resources, snapshot tables and cube statistics
@@ -118,10 +108,8 @@ public class MetadataCleanupJob extends AbstractHadoopJob {
                     NavigableSet<String> snapshotNames = getStore().listResources(snapshotTable);
                     if (snapshotNames != null)
                         for (String snapshot : snapshotNames) {
-                            if (!activeResourceList.contains(snapshot)) {
-                                if (isOlderThanThreshold(getStore().getResourceTimestamp(snapshot)))
-                                    toDeleteResource.add(snapshot);
-                            }
+                            if (isOlderThanThreshold(getStore().getResourceTimestamp(snapshot)))
+                                toDeleteResource.add(snapshot);
                         }
                 }
             }
@@ -130,32 +118,42 @@ public class MetadataCleanupJob extends AbstractHadoopJob {
         // three level resources, only dictionaries
         NavigableSet<String> dictTables = getStore().listResources(ResourceStore.DICT_RESOURCE_ROOT);
 
-        for (String table : dictTables) {
-            NavigableSet<String> tableColNames = getStore().listResources(table);
-            if (tableColNames != null)
-                for (String tableCol : tableColNames) {
-                    NavigableSet<String> dictionaries = getStore().listResources(tableCol);
-                    if (dictionaries != null)
-                        for (String dict : dictionaries)
-                            if (!activeResourceList.contains(dict)) {
+        if (dictTables != null) {
+            for (String table : dictTables) {
+                NavigableSet<String> tableColNames = getStore().listResources(table);
+                if (tableColNames != null)
+                    for (String tableCol : tableColNames) {
+                        NavigableSet<String> dictionaries = getStore().listResources(tableCol);
+                        if (dictionaries != null)
+                            for (String dict : dictionaries)
                                 if (isOlderThanThreshold(getStore().getResourceTimestamp(dict)))
                                     toDeleteResource.add(dict);
-                            }
-                }
+                    }
+            }
         }
-        
+
+        Set<String> activeResourceList = Sets.newHashSet();
+        for (org.apache.kylin.cube.CubeInstance cube : cubeManager.listAllCubes()) {
+            for (org.apache.kylin.cube.CubeSegment segment : cube.getSegments()) {
+                activeResourceList.addAll(segment.getSnapshotPaths());
+                activeResourceList.addAll(segment.getDictionaryPaths());
+                activeResourceList.add(segment.getStatisticsResourcePath());
+            }
+        }
+
+        toDeleteResource.removeAll(activeResourceList);
+
         // delete old and completed jobs
         ExecutableDao executableDao = ExecutableDao.getInstance(KylinConfig.getInstanceFromEnv());
         List<ExecutablePO> allExecutable = executableDao.getJobs();
         for (ExecutablePO executable : allExecutable) {
             long lastModified = executable.getLastModified();
             ExecutableOutputPO output = executableDao.getJobOutput(executable.getUuid());
-            if (System.currentTimeMillis() - lastModified > TIME_THREADSHOLD_FOR_JOB && (output.getStatus().equals(JobStatusEnum.FINISHED.toString()) || output.getStatus().equals(JobStatusEnum.DISCARDED.toString()))) {
+            if (System.currentTimeMillis() - lastModified > TIME_THREADSHOLD_FOR_JOB && (ExecutableState.SUCCEED.toString().equals(output.getStatus()) || ExecutableState.DISCARDED.toString().equals(output.getStatus()))) {
                 toDeleteResource.add(ResourceStore.EXECUTE_RESOURCE_ROOT + "/" + executable.getUuid());
                 toDeleteResource.add(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT + "/" + executable.getUuid());
 
                 for (ExecutablePO task : executable.getTasks()) {
-                    toDeleteResource.add(ResourceStore.EXECUTE_RESOURCE_ROOT + "/" + task.getUuid());
                     toDeleteResource.add(ResourceStore.EXECUTE_OUTPUT_RESOURCE_ROOT + "/" + task.getUuid());
                 }
             }
@@ -177,6 +175,8 @@ public class MetadataCleanupJob extends AbstractHadoopJob {
     }
 
     public static void main(String[] args) throws Exception {
+        logger.warn("org.apache.kylin.engine.mr.steps.MetadataCleanupJob is deprecated, use org.apache.kylin.tool.MetadataCleanupJob instead");
+
         int exitCode = ToolRunner.run(new MetadataCleanupJob(), args);
         System.exit(exitCode);
     }

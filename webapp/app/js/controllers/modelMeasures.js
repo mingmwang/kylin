@@ -22,6 +22,36 @@
 
 'use strict';
 
-KylinApp.controller('ModelMeasuresCtrl', function ($scope) {
-
+KylinApp.controller('ModelMeasuresCtrl', function ($scope, $modal,MetaModel,modelsManager,VdmUtil,$filter) {
+    $scope.modelsManager = modelsManager;
+    $scope.availableFactTables = [];
+    $scope.selectedFactTables = {};
+    $scope.availableFactTables.push(VdmUtil.removeNameSpace($scope.modelsManager.selectedModel.fact_table));
+    var joinTable = $scope.modelsManager.selectedModel.lookups;
+    for (var j = 0; j < joinTable.length; j++) {
+        if(joinTable[j].kind=='FACT'){
+          $scope.availableFactTables.push(joinTable[j].alias);
+        }
+    }
+    $scope.changeColumns = function (table){
+      angular.forEach($scope.selectedFactTables[table],function(column){
+        if($scope.modelsManager.selectedModel.metrics.indexOf(column)==-1){
+          $scope.modelsManager.selectedModel.metrics.push(column);
+        }
+      });
+      angular.forEach($scope.modelsManager.selectedModel.metrics,function(metric){
+        if($scope.selectedFactTables[VdmUtil.getNameSpaceAliasName(metric)].indexOf(metric)==-1){
+          $scope.modelsManager.selectedModel.metrics.splice($scope.modelsManager.selectedModel.metrics.indexOf(metric),1);
+        }
+      });
+    }
+    angular.forEach($scope.modelsManager.selectedModel.metrics,function(metric){
+       var aliasName = VdmUtil.getNameSpaceAliasName(metric)
+       $scope.selectedFactTables[aliasName]=$scope.selectedFactTables[aliasName]||[];
+       $scope.selectedFactTables[aliasName].push(metric);
+    });
+    for (var i in $scope.selectedFactTables) {
+      $scope.selectedFactTables[i] = $filter('notInJoin')($scope.selectedFactTables[i], i, $scope.modelsManager.selectedModel.lookups)
+      $scope.changeColumns(i)
+    }
 });

@@ -31,8 +31,8 @@ import org.apache.kylin.job.execution.AbstractExecutable;
 import org.apache.kylin.job.execution.ChainedExecutable;
 import org.apache.kylin.job.execution.DefaultChainedExecutable;
 import org.apache.kylin.job.execution.Executable;
+import org.apache.kylin.job.execution.ExecutableManager;
 import org.apache.kylin.job.execution.ExecutableState;
-import org.apache.kylin.job.manager.ExecutableManager;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -109,7 +109,7 @@ public class ExecutableManagerTest extends LocalFileMetadataTestCase {
     public void testInvalidStateTransfer() {
         SucceedTestExecutable job = new SucceedTestExecutable();
         service.addJob(job);
-        service.updateJobOutput(job.getId(), ExecutableState.RUNNING, null, null);
+        service.updateJobOutput(job.getId(), ExecutableState.ERROR, null, null);
         service.updateJobOutput(job.getId(), ExecutableState.STOPPED, null, null);
     }
 

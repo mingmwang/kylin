@@ -25,27 +25,35 @@ import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
-
-import com.google.common.collect.Lists;
+import java.util.Set;
 
 import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.rel.type.RelDataTypeField;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.metadata.filter.TupleFilter;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.JoinsTree;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.realization.IRealization;
 import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.realization.SQLDigest.SQLCall;
 import org.apache.kylin.metadata.tuple.TupleInfo;
+import org.apache.kylin.query.routing.RealizationCheck;
 import org.apache.kylin.query.schema.OLAPSchema;
 import org.apache.kylin.storage.StorageContext;
+import org.apache.kylin.storage.hybrid.HybridInstance;
+
+import com.google.common.collect.Lists;
 
 /**
  */
 public class OLAPContext {
 
     public static final String PRM_ACCEPT_PARTIAL_RESULT = "AcceptPartialResult";
+    public static final String PRM_USER_AUTHEN_INFO = "UserAuthenInfo";
 
     private static final ThreadLocal<Map<String, String>> _localPrarameters = new ThreadLocal<Map<String, String>>();
 
@@ -84,7 +92,7 @@ public class OLAPContext {
     public OLAPContext(int seq) {
         this.id = seq;
         this.storageContext = new StorageContext();
-        this.sortMeasures = Lists.newArrayList();
+        this.sortColumns = Lists.newArrayList();
         this.sortOrders = Lists.newArrayList();
         Map<String, String> parameters = _localPrarameters.get();
         if (parameters != null) {
@@ -92,6 +100,9 @@ public class OLAPContext {
             if (acceptPartialResult != null) {
                 this.storageContext.setAcceptPartialResult(Boolean.parseBoolean(acceptPartialResult));
             }
+            String acceptUserInfo = parameters.get(PRM_USER_AUTHEN_INFO);
+            if (null != acceptUserInfo)
+                this.olapAuthen.parseUserInfo(acceptUserInfo);
         }
     }
 
@@ -101,32 +112,43 @@ public class OLAPContext {
     // query info
     public OLAPSchema olapSchema = null;
     public OLAPTableScan firstTableScan = null; // to be fact table scan except "select * from lookupTable"
+    public Set<OLAPTableScan> allTableScans = new HashSet<>();
+    public Set<OLAPJoinRel> allOlapJoins = new HashSet<>();
+    public Set<MeasureDesc> involvedMeasure = new HashSet<>();
     public TupleInfo returnTupleInfo = null;
     public boolean afterAggregate = false;
-    public boolean afterSkippedFilter = false;
+    public boolean afterHavingClauseFilter = false;
+    public boolean afterLimit = false;
+    public boolean limitPrecedesAggr = false;
     public boolean afterJoin = false;
     public boolean hasJoin = false;
 
     // cube metadata
     public IRealization realization;
+    public RealizationCheck realizationCheck;
 
-    public Collection<TblColRef> allColumns = new HashSet<TblColRef>();
-    public Collection<TblColRef> groupByColumns = new ArrayList<TblColRef>();
-    public Collection<TblColRef> metricsColumns = new HashSet<TblColRef>();
-    public List<FunctionDesc> aggregations = new ArrayList<FunctionDesc>();
-    public Collection<TblColRef> filterColumns = new HashSet<TblColRef>();
+    public Set<TblColRef> allColumns = new HashSet<>();
+    public List<TblColRef> groupByColumns = new ArrayList<>();
+    public Set<TblColRef> subqueryJoinParticipants = new HashSet<TblColRef>();//subqueryJoinParticipants will be added to groupByColumns(only when other group by co-exists) and allColumns
+    public Set<TblColRef> metricsColumns = new HashSet<>();
+    public List<FunctionDesc> aggregations = new ArrayList<>(); // storage level measure type, on top of which various sql aggr function may apply
+    public List<TblColRef> aggrOutCols = new ArrayList<>(); // aggregation output (inner) columns
+    public List<SQLCall> aggrSqlCalls = new ArrayList<>(); // sql level aggregation function call
+    public Set<TblColRef> filterColumns = new HashSet<>();
     public TupleFilter filter;
-    public List<JoinDesc> joins = new LinkedList<JoinDesc>();
-    private List<MeasureDesc> sortMeasures;
+    public TupleFilter havingFilter;
+    public List<JoinDesc> joins = new LinkedList<>();
+    public JoinsTree joinsTree;
+    private List<TblColRef> sortColumns;
     private List<SQLDigest.OrderEnum> sortOrders;
 
     // rewrite info
-    public Map<String, RelDataType> rewriteFields = new HashMap<String, RelDataType>();
-
-    public int limit;
+    public Map<String, RelDataType> rewriteFields = new HashMap<>();
 
     // hive query
     public String sql = "";
+
+    public OLAPAuthentication olapAuthen = new OLAPAuthentication();
 
     public boolean isSimpleQuery() {
         return (joins.size() == 0) && (groupByColumns.size() == 0) && (aggregations.size() == 0);
@@ -136,12 +158,31 @@ public class OLAPContext {
 
     public SQLDigest getSQLDigest() {
         if (sqlDigest == null)
-            sqlDigest = new SQLDigest(firstTableScan.getTableName(), filter, joins, allColumns, groupByColumns, filterColumns, metricsColumns, aggregations, sortMeasures, sortOrders);
+            sqlDigest = new SQLDigest(firstTableScan.getTableName(), allColumns, joins, // model
+                    groupByColumns, subqueryJoinParticipants, // group by
+                    metricsColumns, aggregations, aggrSqlCalls, // aggregation
+                    filterColumns, filter, havingFilter, // filter
+                    sortColumns, sortOrders, limitPrecedesAggr, // sort & limit
+                    involvedMeasure);
         return sqlDigest;
+    }
+
+    public boolean hasPrecalculatedFields() {
+        return realization instanceof CubeInstance || realization instanceof HybridInstance;
     }
 
     public void resetSQLDigest() {
         this.sqlDigest = null;
+    }
+
+    public boolean belongToContextTables(TblColRef tblColRef) {
+        for (OLAPTableScan olapTableScan : this.allTableScans) {
+            if (olapTableScan.getColumnRowType().getAllColumns().contains(tblColRef)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public void setReturnTupleInfo(RelDataType rowType, ColumnRowType columnRowType) {
@@ -155,11 +196,17 @@ public class OLAPContext {
         this.returnTupleInfo = info;
     }
 
-    public void addSort(MeasureDesc measure, SQLDigest.OrderEnum order) {
-        if (measure != null) {
-            sortMeasures.add(measure);
+    public void addSort(TblColRef col, SQLDigest.OrderEnum order) {
+        if (col != null) {
+            sortColumns.add(col);
             sortOrders.add(order);
         }
+    }
+
+    // ============================================================================
+
+    public interface IAccessController {
+        public void check(List<OLAPContext> contexts, KylinConfig config) throws IllegalStateException;
     }
 
 }

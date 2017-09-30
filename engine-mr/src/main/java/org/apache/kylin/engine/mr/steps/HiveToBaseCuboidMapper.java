@@ -19,11 +19,10 @@
 package org.apache.kylin.engine.mr.steps;
 
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
+import java.util.Collection;
 
 import org.apache.kylin.engine.mr.IMRInput.IMRTableInputFormat;
 import org.apache.kylin.engine.mr.MRUtil;
-import org.apache.kylin.engine.mr.common.BatchConstants;
 
 /**
  * @author George Song (ysong1)
@@ -33,27 +32,21 @@ public class HiveToBaseCuboidMapper<KEYIN> extends BaseCuboidMapperBase<KEYIN, O
     private IMRTableInputFormat flatTableInputFormat;
 
     @Override
-    protected void setup(Context context) throws IOException {
-        super.setup(context);
+    protected void doSetup(Context context) throws IOException {
+        super.doSetup(context);
         flatTableInputFormat = MRUtil.getBatchCubingInputSide(cubeSegment).getFlatTableInputFormat();
     }
 
     @Override
-    public void map(KEYIN key, Object value, Context context) throws IOException, InterruptedException {
-        counter++;
-        if (counter % BatchConstants.NORMAL_RECORD_LOG_THRESHOLD == 0) {
-            logger.info("Handled " + counter + " records!");
-        }
+    public void doMap(KEYIN key, Object value, Context context) throws IOException, InterruptedException {
+        Collection<String[]> rowCollection = flatTableInputFormat.parseMapperInput(value);
+        for (String[] row: rowCollection) {
+            try {
+                outputKV(row, context);
 
-        try {
-            //put a record into the shared bytesSplitter
-            String[] row = flatTableInputFormat.parseMapperInput(value);
-            bytesSplitter.setBuffers(convertUTF8Bytes(row));
-            //take care of the data in bytesSplitter
-            outputKV(context);
-
-        } catch (Exception ex) {
-            handleErrorRecord(bytesSplitter, ex);
+            } catch (Exception ex) {
+                handleErrorRecord(row, ex);
+            }
         }
     }
 

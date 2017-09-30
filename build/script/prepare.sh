@@ -23,12 +23,12 @@ cd ${dir}/../..
 if [ -z "$version" ]
 then
     echo 'version not set'
-    version=`mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version | grep -v '\['`
+    version=`mvn org.apache.maven.plugins:maven-help-plugin:2.1.1:evaluate -Dexpression=project.version |  grep -E '^[0-9]+\.[0-9]+\.[0-9]+' `
 fi
 echo "version ${version}"
 export version
 
-sh build/script/prepare_libs.sh || { exit 1; }
+sh build/script/prepare-libs.sh || { exit 1; }
 
 cp server/target/kylin-server-${version}.war build/tomcat/webapps/kylin.war
 chmod 644 build/tomcat/webapps/kylin.war

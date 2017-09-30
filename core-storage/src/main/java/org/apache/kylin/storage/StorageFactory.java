@@ -18,13 +18,7 @@
 
 package org.apache.kylin.storage;
 
-import static org.apache.kylin.metadata.model.IStorageAware.ID_HBASE;
-import static org.apache.kylin.metadata.model.IStorageAware.ID_HYBRID;
-import static org.apache.kylin.metadata.model.IStorageAware.ID_SHARDED_HBASE;
-
-import java.util.HashMap;
-import java.util.Map;
-
+import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.util.ImplementationSwitch;
 import org.apache.kylin.metadata.model.IStorageAware;
 import org.apache.kylin.metadata.realization.IRealization;
@@ -33,17 +27,16 @@ import org.apache.kylin.metadata.realization.IRealization;
  */
 public class StorageFactory {
 
-    private static ImplementationSwitch<IStorage> storages;
-    static {
-        Map<Integer, String> impls = new HashMap<>();
-        impls.put(ID_HBASE, "org.apache.kylin.storage.hbase.HBaseStorage");
-        impls.put(ID_SHARDED_HBASE, "org.apache.kylin.storage.hbase.HBaseStorage");//ID_SHARDED_HBASE is a special HBaseStorage
-        impls.put(ID_HYBRID, "org.apache.kylin.storage.hybrid.HybridStorage");
-        storages = new ImplementationSwitch<IStorage>(impls, IStorage.class);
-    }
+    // Use thread-local because KylinConfig can be thread-local and implementation might be different among multiple threads.
+    private static ThreadLocal<ImplementationSwitch<IStorage>> storages = new ThreadLocal<>();
 
     public static IStorage storage(IStorageAware aware) {
-        return storages.get(aware.getStorageType());
+        ImplementationSwitch<IStorage> current = storages.get();
+        if (storages.get() == null) {
+            current = new ImplementationSwitch<>(KylinConfig.getInstanceFromEnv().getStorageEngines(), IStorage.class);
+            storages.set(current);
+        }
+        return current.get(aware.getStorageType());
     }
 
     public static IStorageQuery createQuery(IRealization realization) {

@@ -21,7 +21,6 @@ package org.apache.kylin.storage.hbase.steps;
 import static org.junit.Assert.assertTrue;
 
 import java.io.File;
-import java.nio.ByteBuffer;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.hadoop.conf.Configuration;
@@ -30,11 +29,10 @@ import org.apache.hadoop.hbase.io.ImmutableBytesWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper.Context;
 import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.cube.CubeManager;
-import org.apache.kylin.cube.kv.RowConstants;
 import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.engine.mr.HadoopUtil;
 import org.apache.kylin.measure.MeasureCodec;
 import org.junit.After;
 import org.junit.Before;
@@ -50,7 +48,6 @@ public class CubeHFileMapper2Test extends LocalFileMetadataTestCase {
     String cubeName = "test_kylin_cube_with_slr_ready";
 
     MeasureCodec codec;
-    ByteBuffer buf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
     Object[] outKV = new Object[2];
 
     @Before
@@ -58,7 +55,7 @@ public class CubeHFileMapper2Test extends LocalFileMetadataTestCase {
         this.createTestMetadata();
         // hack for distributed cache
         FileUtils.deleteDirectory(new File("../job/meta"));
-        FileUtils.copyDirectory(new File(getTestConfig().getMetadataUrl()), new File("../job/meta"));
+        FileUtils.copyDirectory(new File(getTestConfig().getMetadataUrl().toString()), new File("../job/meta"));
         CubeDesc desc = CubeManager.getInstance(getTestConfig()).getCube(cubeName).getDescriptor();
         codec = new MeasureCodec(desc.getMeasures());
     }
@@ -73,10 +70,10 @@ public class CubeHFileMapper2Test extends LocalFileMetadataTestCase {
     public void testBasic() throws Exception {
 
         Configuration hconf = HadoopUtil.getCurrentConfiguration();
-        Context context = MockupMapContext.create(hconf, getTestConfig().getMetadataUrl(), cubeName, outKV);
+        Context context = MockupMapContext.create(hconf, cubeName, outKV);
 
         CubeHFileMapper mapper = new CubeHFileMapper();
-        mapper.setup(context);
+        mapper.doSetup(context);
 
         Text key = new Text("not important");
         Text value = new Text(new byte[] { 2, 2, 51, -79, 1 });

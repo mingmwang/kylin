@@ -44,7 +44,6 @@ import org.apache.kylin.common.util.CaseInsensitiveStringMap;
 import org.apache.kylin.common.util.JsonUtil;
 import org.apache.kylin.metadata.MetadataConstants;
 import org.apache.kylin.metadata.MetadataManager;
-import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.IEngineAware;
@@ -120,7 +119,7 @@ public class CubeDesc extends RootPersistentEntity {
     @JsonProperty("partition_date_start")
     private long partitionDateStart = 0L;
     @JsonProperty("partition_date_end")
-    private long partitionDateEnd = 3153600000000l;
+    private long partitionDateEnd = 3153600000000L;
     @JsonProperty("auto_merge_time_ranges")
     private long[] autoMergeTimeRanges;
     @JsonProperty("retention_range")
@@ -325,11 +324,11 @@ public class CubeDesc extends RootPersistentEntity {
     }
 
     public String getFactTable() {
-        return model.getFactTable();
+        return model.getRootFactTable().getTableIdentity();
     }
 
     public TableDesc getFactTableDesc() {
-        return model.getFactTableDesc();
+        return model.getRootFactTable().getTableDesc();
     }
 
     public List<TableDesc> getLookupTableDescs() {
@@ -491,14 +490,13 @@ public class CubeDesc extends RootPersistentEntity {
             ArrayList<TblColRef> dimCols = Lists.newArrayList();
             String[] colStrs = dim.getColumn();
 
-            // when column is omitted, special case
             if (colStrs == null && dim.isDerived() || ArrayUtils.contains(colStrs, "{FK}")) {
+                // when column is omitted, special case
                 for (TblColRef col : join.getForeignKeyColumns()) {
                     dimCols.add(initDimensionColRef(col));
                 }
-            }
-            // normal case
-            else {
+            } else {
+                // normal case
                 if (colStrs == null || colStrs.length == 0)
                     throw new IllegalStateException("Dimension column must not be blank " + dim);
 
@@ -608,12 +606,7 @@ public class CubeDesc extends RootPersistentEntity {
     }
 
     private TblColRef initDimensionColRef(DimensionDesc dim, String colName) {
-        TableDesc table = dim.getTableDesc();
-        ColumnDesc col = table.findColumnByName(colName);
-        if (col == null)
-            throw new IllegalArgumentException("No column '" + colName + "' found in table " + table);
-
-        TblColRef ref = new TblColRef(col);
+        TblColRef ref = model.findColumn(dim.getTable(), colName);
 
         // always use FK instead PK, FK could be shared by more than one lookup tables
         JoinDesc join = dim.getJoin();
@@ -637,7 +630,8 @@ public class CubeDesc extends RootPersistentEntity {
 
         Map<String, TblColRef> cols = columnMap.get(ref.getTable());
         if (cols == null) {
-            columnMap.put(ref.getTable(), cols = new HashMap<String, TblColRef>());
+            cols = new HashMap<String, TblColRef>();
+            columnMap.put(ref.getTable(), cols);
         }
         cols.put(ref.getName(), ref);
         return ref;
@@ -648,8 +642,6 @@ public class CubeDesc extends RootPersistentEntity {
             return;
         }
 
-        TableDesc factTable = getFactTableDesc();
-        List<TableDesc> lookups = getLookupTableDescs();
         for (MeasureDesc m : measures) {
             m.setName(m.getName().toUpperCase());
 
@@ -658,16 +650,15 @@ public class CubeDesc extends RootPersistentEntity {
             }
 
             FunctionDesc func = m.getFunction();
-            func.init(factTable, lookups);
+            func.init(model);
             allColumns.addAll(func.getParameter().getColRefs());
 
-//            // verify holistic count distinct as a dependent measure
-//            if (isHolisticCountDistinct() && StringUtils.isBlank(m.getDependentMeasureRef())) {
-//                throw new IllegalStateException(m + " is a holistic count distinct but it has no DependentMeasureRef defined!");
-//            }
+            //            // verify holistic count distinct as a dependent measure
+            //            if (isHolisticCountDistinct() && StringUtils.isBlank(m.getDependentMeasureRef())) {
+            //                throw new IllegalStateException(m + " is a holistic count distinct but it has no DependentMeasureRef defined!");
+            //            }
         }
     }
-
 
     private void initMeasureReferenceToColumnFamily() {
         if (measures == null || measures.size() == 0)
@@ -719,15 +710,6 @@ public class CubeDesc extends RootPersistentEntity {
         if (measures == null) {
             measures = Lists.newArrayList();
         }
-
-        //        Collections.sort(measures, new Comparator<MeasureDesc>() {
-        //            @Override
-        //            public int compare(MeasureDesc m1, MeasureDesc m2) {
-        //                Integer id1 = m1.getId();
-        //                Integer id2 = m2.getId();
-        //                return id1.compareTo(id2);
-        //            }
-        //        });
     }
 
     private void sortHierarchiesByLevel(HierarchyDesc[] hierarchies) {
@@ -742,7 +724,11 @@ public class CubeDesc extends RootPersistentEntity {
             });
         }
     }
-
+    
+    public String getProject() {
+        return getModel().getProject();
+    }
+    
     public long getRetentionRange() {
         return retentionRange;
     }
@@ -851,4 +837,5 @@ public class CubeDesc extends RootPersistentEntity {
         newCubeDesc.updateRandomUuid();
         return newCubeDesc;
     }
+
 }

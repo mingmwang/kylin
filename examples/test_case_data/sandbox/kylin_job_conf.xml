@@ -31,40 +31,39 @@
         <value>2</value>
     </property>
 
-    <!--
     <property>
-        <name>mapred.compress.map.output</name>
+        <name>mapreduce.map.output.compress</name>
         <value>true</value>
         <description>Compress map outputs</description>
     </property>
 
     <property>
-        <name>mapred.map.output.compression.codec</name>
+        <name>mapreduce.map.output.compress.codec</name>
         <value>org.apache.hadoop.io.compress.SnappyCodec</value>
         <description>The compression codec to use for map outputs
         </description>
     </property>
 
     <property>
-        <name>mapred.output.compress</name>
+        <name>mapreduce.output.fileoutputformat.compress</name>
         <value>true</value>
         <description>Compress the output of a MapReduce job</description>
     </property>
 
     <property>
-        <name>mapred.output.compression.codec</name>
+        <name>mapreduce.output.fileoutputformat.compress.codec</name>
         <value>org.apache.hadoop.io.compress.SnappyCodec</value>
         <description>The compression codec to use for job outputs
         </description>
     </property>
 
+    <!--
     <property>
-        <name>mapred.output.compression.type</name>
+        <name>mapreduce.output.fileoutputformat.compress.type</name>
         <value>BLOCK</value>
         <description>The compression type to use for job outputs</description>
     </property>
--->
-
+    -->
     <property>
         <name>mapreduce.job.max.split.locations</name>
         <value>2000</value>
@@ -75,6 +74,32 @@
         <name>dfs.replication</name>
         <value>2</value>
         <description>Block replication</description>
+    </property>
+
+    <!-- memory configuration for sandbox -->
+    <property>
+        <name>mapreduce.map.memory.mb</name>
+        <value>384</value>
+    </property>
+
+    <property>
+        <name>mapreduce.map.java.opts</name>
+        <value>-Xmx350m</value>
+    </property>
+
+    <property>
+        <name>mapreduce.task.io.sort.mb</name>
+        <value>30</value>
+    </property>
+
+    <property>
+        <name>mapreduce.reduce.memory.mb</name>
+        <value>384</value>
+    </property>
+
+    <property>
+        <name>mapreduce.reduce.java.opts</name>
+        <value>-Xmx350m</value>
     </property>
 
 </configuration>

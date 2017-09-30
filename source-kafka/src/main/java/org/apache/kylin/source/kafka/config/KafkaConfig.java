@@ -1,36 +1,20 @@
 /*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Licensed to the Apache Software Foundation (ASF) under one or more
- *
- *  contributor license agreements. See the NOTICE file distributed with
- *
- *  this work for additional information regarding copyright ownership.
- *
- *  The ASF licenses this file to You under the Apache License, Version 2.0
- *
- *  (the "License"); you may not use this file except in compliance with
- *
- *  the License. You may obtain a copy of the License at
- *
- *
- *
- *  http://www.apache.org/licenses/LICENSE-2.0
- *
- *
- *
- *  Unless required by applicable law or agreed to in writing, software
- *
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *
- *  See the License for the specific language governing permissions and
- *
- *  limitations under the License.
- *
- * /
- */
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
 
 package org.apache.kylin.source.kafka.config;
 
@@ -45,11 +29,12 @@ import org.apache.kylin.common.persistence.JsonSerializer;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.RootPersistentEntity;
 import org.apache.kylin.common.persistence.Serializer;
+import org.apache.kylin.metadata.MetadataConstants;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import org.apache.kylin.metadata.MetadataConstants;
+import org.apache.kylin.source.kafka.TimedJsonStreamParser;
 
 /**
  */
@@ -71,19 +56,20 @@ public class KafkaConfig extends RootPersistentEntity {
     @JsonProperty("timeout")
     private int timeout;
 
-    @JsonProperty("bufferSize")
-    private int bufferSize;
-
     @JsonProperty("parserName")
     private String parserName;
 
+    @JsonProperty("timestampField")
+    private String timestampField;
+
+    @Deprecated
     @JsonProperty("margin")
     private long margin;
 
     //"configA=1;configB=2"
     @JsonProperty("parserProperties")
     private String parserProperties;
-    
+
     public String getResourcePath() {
         return concatResourcePath(name);
     }
@@ -112,14 +98,6 @@ public class KafkaConfig extends RootPersistentEntity {
         this.timeout = timeout;
     }
 
-    public int getBufferSize() {
-        return bufferSize;
-    }
-
-    public void setBufferSize(int bufferSize) {
-        this.bufferSize = bufferSize;
-    }
-
     public String getTopic() {
         return topic;
     }
@@ -136,12 +114,22 @@ public class KafkaConfig extends RootPersistentEntity {
         this.name = name;
     }
 
+    @Deprecated
     public long getMargin() {
         return margin;
     }
 
+    @Deprecated
     public void setMargin(long margin) {
         this.margin = margin;
+    }
+
+    public void setTimestampField(String timestampField) {
+        this.timestampField = timestampField;
+    }
+
+    public String getTimestampField() {
+        return this.timestampField;
     }
 
     public String getParserProperties() {
@@ -150,6 +138,17 @@ public class KafkaConfig extends RootPersistentEntity {
 
     public void setParserProperties(String parserProperties) {
         this.parserProperties = parserProperties;
+    }
+
+    public String getAllParserProperties() {
+        StringBuilder sb = new StringBuilder();
+        if (timestampField != null) {
+            sb.append(TimedJsonStreamParser.PROPERTY_TS_COLUMN_NAME + "=" + timestampField);
+            sb.append(";");
+        }
+        if (parserProperties != null)
+            sb.append(parserProperties);
+        return sb.toString();
     }
 
     @Override

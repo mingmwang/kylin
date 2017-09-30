@@ -18,48 +18,79 @@
 
 package org.apache.kylin.cube.cli;
 
+import java.io.IOException;
+import java.util.Set;
+
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.model.DimensionDesc;
+import org.apache.kylin.dict.DictionaryProvider;
 import org.apache.kylin.dict.DistinctColumnValuesProvider;
-import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.JoinDesc;
+import org.apache.kylin.metadata.model.TableRef;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.apache.kylin.source.IReadableTable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
+import com.google.common.collect.Sets;
 
 public class DictionaryGeneratorCLI {
 
     private static final Logger logger = LoggerFactory.getLogger(DictionaryGeneratorCLI.class);
 
-    public static void processSegment(KylinConfig config, String cubeName, String segmentName, DistinctColumnValuesProvider factTableValueProvider) throws IOException {
+    public static void processSegment(KylinConfig config, String cubeName, String segmentID, DistinctColumnValuesProvider factTableValueProvider, DictionaryProvider dictProvider) throws IOException {
         CubeInstance cube = CubeManager.getInstance(config).getCube(cubeName);
-        CubeSegment segment = cube.getSegment(segmentName, SegmentStatusEnum.NEW);
+        CubeSegment segment = cube.getSegmentById(segmentID);
 
-        processSegment(config, segment, factTableValueProvider);
+        processSegment(config, segment, factTableValueProvider, dictProvider);
     }
 
-    private static void processSegment(KylinConfig config, CubeSegment cubeSeg, DistinctColumnValuesProvider factTableValueProvider) throws IOException {
+    private static void processSegment(KylinConfig config, CubeSegment cubeSeg, DistinctColumnValuesProvider factTableValueProvider, DictionaryProvider dictProvider) throws IOException {
         CubeManager cubeMgr = CubeManager.getInstance(config);
 
         // dictionary
-        for (TblColRef col : cubeSeg.getCubeDesc().getAllColumnsNeedDictionary()) {
+        for (TblColRef col : cubeSeg.getCubeDesc().getAllColumnsNeedDictionaryBuilt()) {
             logger.info("Building dictionary for " + col);
-            cubeMgr.buildDictionary(cubeSeg, col, factTableValueProvider);
+            IReadableTable inpTable = factTableValueProvider.getDistinctValuesFor(col);
+            
+            Dictionary<String> preBuiltDict = null;
+            if (dictProvider != null) {
+                preBuiltDict = dictProvider.getDictionary(col);
+            }
+        
+            if (preBuiltDict != null) {
+                logger.debug("Dict for '" + col.getName() + "' has already been built, save it");
+                cubeMgr.saveDictionary(cubeSeg, col, inpTable, preBuiltDict);
+            } else {
+                logger.debug("Dict for '" + col.getName() + "' not pre-built, build it from " + inpTable.toString());
+                cubeMgr.buildDictionary(cubeSeg, col, inpTable);
+            }
         }
 
+        // snapshot
+        Set<String> toSnapshot = Sets.newHashSet();
+        Set<TableRef> toCheckLookup = Sets.newHashSet();
         for (DimensionDesc dim : cubeSeg.getCubeDesc().getDimensions()) {
-            // build snapshot
-            if (dim.getTable() != null && !dim.getTable().equalsIgnoreCase(cubeSeg.getCubeDesc().getFactTable())) {
-                // CubeSegment seg = cube.getTheOnlySegment();
-                logger.info("Building snapshot of " + dim.getTable());
-                cubeMgr.buildSnapshotTable(cubeSeg, dim.getTable());
-                logger.info("Checking snapshot of " + dim.getTable());
-                cubeMgr.getLookupTable(cubeSeg, dim); // load the table for sanity check
+            TableRef table = dim.getTableRef();
+            if (cubeSeg.getModel().isLookupTable(table)) {
+                toSnapshot.add(table.getTableIdentity());
+                toCheckLookup.add(table);
             }
+        }
+
+        for (String tableIdentity : toSnapshot) {
+            logger.info("Building snapshot of " + tableIdentity);
+            cubeMgr.buildSnapshotTable(cubeSeg, tableIdentity);
+        }
+        
+        for (TableRef lookup : toCheckLookup) {
+            logger.info("Checking snapshot of " + lookup);
+            JoinDesc join = cubeSeg.getModel().getJoinsTree().getJoinByPKSide(lookup);
+            cubeMgr.getLookupTable(cubeSeg, join);
         }
     }
 

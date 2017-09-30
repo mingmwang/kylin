@@ -18,11 +18,13 @@
 
 package org.apache.kylin.rest.service;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertArrayEquals;
+import static org.junit.Assert.assertEquals;
 
 import java.util.ArrayList;
 
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
+import org.apache.kylin.metadata.badquery.BadQueryEntry;
 import org.apache.kylin.rest.request.SQLRequest;
 import org.junit.After;
 import org.junit.Before;
@@ -51,7 +53,7 @@ public class BadQueryDetectorTest extends LocalFileMetadataTestCase {
         BadQueryDetector badQueryDetector = new BadQueryDetector(alertRunningSec * 1000, alertMB, alertRunningSec);
         badQueryDetector.registerNotifier(new BadQueryDetector.Notifier() {
             @Override
-            public void badQueryFound(String adj, float runningSec, long startTime, String project, String sql, Thread t) {
+            public void badQueryFound(String adj, float runningSec, long startTime, String project, String sql, String user, Thread t) {
                 alerts.add(new String[] { adj, sql });
             }
         });
@@ -62,18 +64,20 @@ public class BadQueryDetectorTest extends LocalFileMetadataTestCase {
 
             SQLRequest sqlRequest = new SQLRequest();
             sqlRequest.setSql(mockSql);
-            badQueryDetector.queryStart(Thread.currentThread(), sqlRequest);
+            badQueryDetector.queryStart(Thread.currentThread(), sqlRequest, "user");
 
             // make sure bad query check happens twice
             Thread.sleep((alertRunningSec * 2 + 1) * 1000);
 
-            badQueryDetector.queryEnd(Thread.currentThread());
+            badQueryDetector.queryEnd(Thread.currentThread(), BadQueryEntry.ADJ_PUSHDOWN);
         }
 
         badQueryDetector.stop();
 
-        assertEquals(1, alerts.size());
+        assertEquals(2, alerts.size());
         // second check founds a Slow
-        assertArrayEquals(new String[] { "Slow", mockSql }, alerts.get(0));
+        assertArrayEquals(new String[] { BadQueryEntry.ADJ_SLOW, mockSql }, alerts.get(0));
+        // end notifies a Pushdown
+        assertArrayEquals(new String[] { BadQueryEntry.ADJ_PUSHDOWN, mockSql }, alerts.get(1));
     }
 }

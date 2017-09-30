@@ -18,10 +18,10 @@
 
 package org.apache.kylin.jdbc.json;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-
 import java.io.Serializable;
 import java.util.List;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
  */
@@ -154,7 +154,7 @@ public class SQLResponseStub implements Serializable {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public static class ColumnMetaStub {
+    public static class ColumnMetaStub implements Serializable{
 
         private boolean isAutoIncrement;
         private boolean isCaseSensitive;

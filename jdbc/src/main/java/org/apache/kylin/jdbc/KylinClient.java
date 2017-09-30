@@ -20,6 +20,8 @@ package org.apache.kylin.jdbc;
 
 import java.io.IOException;
 import java.math.BigDecimal;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.sql.Date;
 import java.sql.Time;
 import java.sql.Timestamp;
@@ -36,25 +38,27 @@ import org.apache.calcite.avatica.AvaticaParameter;
 import org.apache.calcite.avatica.ColumnMetaData;
 import org.apache.calcite.avatica.ColumnMetaData.Rep;
 import org.apache.calcite.avatica.ColumnMetaData.ScalarType;
-import org.apache.commons.httpclient.HttpClient;
-import org.apache.commons.httpclient.HttpMethodBase;
-import org.apache.commons.httpclient.methods.GetMethod;
-import org.apache.commons.httpclient.methods.PostMethod;
-import org.apache.commons.httpclient.methods.StringRequestEntity;
-import org.apache.commons.httpclient.protocol.Protocol;
-import org.apache.commons.httpclient.protocol.ProtocolSocketFactory;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.methods.HttpGet;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpRequestBase;
+import org.apache.http.conn.scheme.Scheme;
+import org.apache.http.conn.ssl.SSLSocketFactory;
+import org.apache.http.conn.ssl.TrustStrategy;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
+import org.apache.http.impl.client.DefaultHttpClient;
+import org.apache.http.util.EntityUtils;
 import org.apache.kylin.jdbc.KylinMeta.KMetaCatalog;
 import org.apache.kylin.jdbc.KylinMeta.KMetaColumn;
 import org.apache.kylin.jdbc.KylinMeta.KMetaProject;
 import org.apache.kylin.jdbc.KylinMeta.KMetaSchema;
 import org.apache.kylin.jdbc.KylinMeta.KMetaTable;
 import org.apache.kylin.jdbc.json.PreparedQueryRequest;
-import org.apache.kylin.jdbc.json.QueryRequest;
 import org.apache.kylin.jdbc.json.SQLResponseStub;
 import org.apache.kylin.jdbc.json.StatementParameter;
 import org.apache.kylin.jdbc.json.TableMetaStub;
 import org.apache.kylin.jdbc.json.TableMetaStub.ColumnMetaStub;
-import org.apache.kylin.jdbc.util.DefaultSslProtocolSocketFactory;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -67,18 +71,29 @@ public class KylinClient implements IRemoteClient {
 
     private final KylinConnection conn;
     private final Properties connProps;
-    private final HttpClient httpClient;
+    private DefaultHttpClient httpClient;
     private final ObjectMapper jsonMapper;
 
     public KylinClient(KylinConnection conn) {
         this.conn = conn;
         this.connProps = conn.getConnectionProperties();
-        this.httpClient = new HttpClient();
+        this.httpClient = new DefaultHttpClient();
         this.jsonMapper = new ObjectMapper();
 
         // trust all certificates
         if (isSSL()) {
-            Protocol.registerProtocol("https", new Protocol("https", (ProtocolSocketFactory) new DefaultSslProtocolSocketFactory(), 443));
+            try {
+                SSLSocketFactory sslsf = new SSLSocketFactory(new TrustStrategy() {
+                    public boolean isTrusted(final X509Certificate[] chain, String authType)
+                            throws CertificateException {
+                        // Oh, I am easy...
+                        return true;
+                    }
+                });
+                httpClient.getConnectionManager().getSchemeRegistry().register(new Scheme("https", 443, sslsf));
+            } catch (Exception e) {
+                throw new RuntimeException("Initialize HTTPS client failed", e);
+            }
         }
     }
 
@@ -97,6 +112,7 @@ public class KylinClient implements IRemoteClient {
             result = BigDecimal.class;
             break;
         case Types.BIT:
+        case Types.BOOLEAN:
             result = Boolean.class;
             break;
         case Types.TINYINT:
@@ -130,6 +146,9 @@ public class KylinClient implements IRemoteClient {
         case Types.TIMESTAMP:
             result = Timestamp.class;
             break;
+        default:
+            //do nothing
+            break;
         }
 
         return result;
@@ -149,6 +168,7 @@ public class KylinClient implements IRemoteClient {
         case Types.DECIMAL:
             return new BigDecimal(value);
         case Types.BIT:
+        case Types.BOOLEAN:
             return Boolean.parseBoolean(value);
         case Types.TINYINT:
             return Byte.valueOf(value);
@@ -173,6 +193,10 @@ public class KylinClient implements IRemoteClient {
             return Time.valueOf(value);
         case Types.TIMESTAMP:
             return Timestamp.valueOf(value);
+        default:
+            //do nothing
+            break;
+
         }
 
         return value;
@@ -186,27 +210,32 @@ public class KylinClient implements IRemoteClient {
         return (isSSL() ? "https://" : "http://") + conn.getBaseUrl();
     }
 
-    private void addHttpHeaders(HttpMethodBase method) {
-        method.addRequestHeader("Accept", "application/json, text/plain, */*");
-        method.addRequestHeader("Content-Type", "application/json");
+    private void addHttpHeaders(HttpRequestBase method) {
+        method.addHeader("Accept", "application/json, text/plain, */*");
+        method.addHeader("Content-Type", "application/json");
+        method.addHeader("User-Agent", "KylinJDBCDriver");
 
         String username = connProps.getProperty("user");
         String password = connProps.getProperty("password");
         String basicAuth = DatatypeConverter.printBase64Binary((username + ":" + password).getBytes());
-        method.addRequestHeader("Authorization", "Basic " + basicAuth);
+        method.addHeader("Authorization", "Basic " + basicAuth);
     }
 
     @Override
     public void connect() throws IOException {
-        PostMethod post = new PostMethod(baseUrl() + "/kylin/api/user/authentication");
+        HttpPost post = new HttpPost(baseUrl() + "/kylin/api/user/authentication");
         addHttpHeaders(post);
-        StringRequestEntity requestEntity = new StringRequestEntity("{}", "application/json", "UTF-8");
-        post.setRequestEntity(requestEntity);
+        StringEntity requestEntity = new StringEntity("{}", ContentType.create("application/json", "UTF-8"));
+        post.setEntity(requestEntity);
 
-        httpClient.executeMethod(post);
+        try {
+            HttpResponse response = httpClient.execute(post);
 
-        if (post.getStatusCode() != 200 && post.getStatusCode() != 201) {
-            throw asIOException(post);
+            if (response.getStatusLine().getStatusCode() != 200 && response.getStatusLine().getStatusCode() != 201) {
+                throw asIOException(post, response);
+            }
+        } finally {
+            post.releaseConnection();
         }
     }
 
@@ -215,21 +244,23 @@ public class KylinClient implements IRemoteClient {
         assert conn.getProject().equals(project);
 
         String url = baseUrl() + "/kylin/api/tables_and_columns?project=" + project;
-        GetMethod get = new GetMethod(url);
+        HttpGet get = new HttpGet(url);
         addHttpHeaders(get);
 
-        httpClient.executeMethod(get);
+        HttpResponse response = httpClient.execute(get);
 
-        if (get.getStatusCode() != 200 && get.getStatusCode() != 201) {
-            throw asIOException(get);
+        if (response.getStatusLine().getStatusCode() != 200 && response.getStatusLine().getStatusCode() != 201) {
+            throw asIOException(get, response);
         }
 
-        List<TableMetaStub> tableMetaStubs = jsonMapper.readValue(get.getResponseBodyAsStream(), new TypeReference<List<TableMetaStub>>() {
-        });
+        List<TableMetaStub> tableMetaStubs = jsonMapper.readValue(response.getEntity().getContent(),
+                new TypeReference<List<TableMetaStub>>() {
+                });
 
         List<KMetaTable> tables = convertMetaTables(tableMetaStubs);
         List<KMetaSchema> schemas = convertMetaSchemas(tables);
         List<KMetaCatalog> catalogs = convertMetaCatalogs(schemas);
+        get.releaseConnection();
         return new KMetaProject(project, catalogs);
     }
 
@@ -286,17 +317,23 @@ public class KylinClient implements IRemoteClient {
         for (ColumnMetaStub columnStub : tableStub.getColumns()) {
             columns.add(convertMetaColumn(columnStub));
         }
-        return new KMetaTable(tableStub.getTABLE_CAT(), tableStub.getTABLE_SCHEM(), tableStub.getTABLE_NAME(), tableStub.getTABLE_TYPE(), columns);
+        return new KMetaTable(tableStub.getTABLE_CAT(), tableStub.getTABLE_SCHEM(), tableStub.getTABLE_NAME(),
+                tableStub.getTABLE_TYPE(), columns);
     }
 
     private KMetaColumn convertMetaColumn(ColumnMetaStub columnStub) {
-        return new KMetaColumn(columnStub.getTABLE_CAT(), columnStub.getTABLE_SCHEM(), columnStub.getTABLE_NAME(), columnStub.getCOLUMN_NAME(), columnStub.getDATA_TYPE(), columnStub.getTYPE_NAME(), columnStub.getCOLUMN_SIZE(), columnStub.getDECIMAL_DIGITS(), columnStub.getNUM_PREC_RADIX(), columnStub.getNULLABLE(), columnStub.getCHAR_OCTET_LENGTH(), columnStub.getORDINAL_POSITION(), columnStub.getIS_NULLABLE());
+        return new KMetaColumn(columnStub.getTABLE_CAT(), columnStub.getTABLE_SCHEM(), columnStub.getTABLE_NAME(),
+                columnStub.getCOLUMN_NAME(), columnStub.getDATA_TYPE(), columnStub.getTYPE_NAME(),
+                columnStub.getCOLUMN_SIZE(), columnStub.getDECIMAL_DIGITS(), columnStub.getNUM_PREC_RADIX(),
+                columnStub.getNULLABLE(), columnStub.getCHAR_OCTET_LENGTH(), columnStub.getORDINAL_POSITION(),
+                columnStub.getIS_NULLABLE());
     }
 
     @Override
-    public QueryResult executeQuery(String sql, List<AvaticaParameter> params, List<Object> paramValues) throws IOException {
+    public QueryResult executeQuery(String sql, List<AvaticaParameter> params, List<Object> paramValues,
+            Map<String, String> queryToggles) throws IOException {
 
-        SQLResponseStub queryResp = executeKylinQuery(sql, convertParameters(params, paramValues));
+        SQLResponseStub queryResp = executeKylinQuery(sql, convertParameters(params, paramValues), queryToggles);
         if (queryResp.getIsException())
             throw new IOException(queryResp.getExceptionMessage());
 
@@ -319,45 +356,50 @@ public class KylinClient implements IRemoteClient {
         return result;
     }
 
-    private SQLResponseStub executeKylinQuery(String sql, List<StatementParameter> params) throws IOException {
+    private SQLResponseStub executeKylinQuery(String sql, List<StatementParameter> params,
+            Map<String, String> queryToggles) throws IOException {
         String url = baseUrl() + "/kylin/api/query";
         String project = conn.getProject();
 
-        QueryRequest request = null;
+        PreparedQueryRequest request = new PreparedQueryRequest();
         if (null != params) {
-            request = new PreparedQueryRequest();
-            ((PreparedQueryRequest) request).setParams(params);
-            url += "/prestate"; // means prepared statement..
-        } else {
-            request = new QueryRequest();
+            request.setParams(params);
         }
         request.setSql(sql);
         request.setProject(project);
+        request.setBackdoorToggles(queryToggles);
 
-        PostMethod post = new PostMethod(url);
+        HttpPost post = new HttpPost(url);
         addHttpHeaders(post);
 
         String postBody = jsonMapper.writeValueAsString(request);
         logger.debug("Post body:\n " + postBody);
-        StringRequestEntity requestEntity = new StringRequestEntity(postBody, "application/json", "UTF-8");
-        post.setRequestEntity(requestEntity);
+        StringEntity requestEntity = new StringEntity(postBody, ContentType.create("application/json", "UTF-8"));
+        post.setEntity(requestEntity);
 
-        httpClient.executeMethod(post);
+        HttpResponse response = httpClient.execute(post);
 
-        if (post.getStatusCode() != 200 && post.getStatusCode() != 201) {
-            throw asIOException(post);
+        if (response.getStatusLine().getStatusCode() != 200 && response.getStatusLine().getStatusCode() != 201) {
+            throw asIOException(post, response);
         }
 
-        return jsonMapper.readValue(post.getResponseBodyAsStream(), SQLResponseStub.class);
+        SQLResponseStub stub = jsonMapper.readValue(response.getEntity().getContent(), SQLResponseStub.class);
+        post.releaseConnection();
+        return stub;
     }
 
     private List<ColumnMetaData> convertColumnMeta(SQLResponseStub queryResp) {
         List<ColumnMetaData> metas = new ArrayList<ColumnMetaData>();
         for (int i = 0; i < queryResp.getColumnMetas().size(); i++) {
             SQLResponseStub.ColumnMetaStub scm = queryResp.getColumnMetas().get(i);
-            ScalarType type = ColumnMetaData.scalar(scm.getColumnType(), scm.getColumnTypeName(), Rep.of(convertType(scm.getColumnType())));
+            Class columnClass = convertType(scm.getColumnType());
+            ScalarType type = ColumnMetaData.scalar(scm.getColumnType(), scm.getColumnTypeName(), Rep.of(columnClass));
 
-            ColumnMetaData meta = new ColumnMetaData(i, scm.isAutoIncrement(), scm.isCaseSensitive(), scm.isSearchable(), scm.isCurrency(), scm.getIsNullable(), scm.isSigned(), scm.getDisplaySize(), scm.getLabel(), scm.getName(), scm.getSchemaName(), scm.getPrecision(), scm.getScale(), scm.getTableName(), scm.getSchemaName(), type, scm.isReadOnly(), scm.isWritable(), scm.isWritable(), null);
+            ColumnMetaData meta = new ColumnMetaData(i, scm.isAutoIncrement(), scm.isCaseSensitive(),
+                    scm.isSearchable(), scm.isCurrency(), scm.getIsNullable(), scm.isSigned(), scm.getDisplaySize(),
+                    scm.getLabel(), scm.getName(), scm.getSchemaName(), scm.getPrecision(), scm.getScale(),
+                    scm.getTableName(), scm.getSchemaName(), type, scm.isReadOnly(), scm.isWritable(), scm.isWritable(),
+                    columnClass.getCanonicalName());
 
             metas.add(meta);
         }
@@ -381,8 +423,9 @@ public class KylinClient implements IRemoteClient {
         return (List<Object>) data;
     }
 
-    private IOException asIOException(HttpMethodBase method) throws IOException {
-        return new IOException(method + " failed, error code " + method.getStatusCode() + " and response: " + method.getResponseBodyAsString());
+    private IOException asIOException(HttpRequestBase request, HttpResponse response) throws IOException {
+        return new IOException(request.getMethod() + " failed, error code " + response.getStatusLine().getStatusCode()
+                + " and response: " + EntityUtils.toString(response.getEntity()));
     }
 
     @Override

@@ -59,6 +59,16 @@ ${KYLIN_HOME}/bin/metastore.sh reset
 
 # Test stage
 ${KYLIN_HOME}/bin/sample.sh
+
+${KYLIN_HOME}/bin/kylin.sh org.apache.kylin.tool.AclTableMigrationCLI MIGRATE
+
+# Enable query push down
+cd ${KYLIN_HOME}
+sed -i 's/#*\(kylin.query.pushdown.runner-class-name*\)/\1/' conf/kylin.properties
+sed -i 's/#*\(kylin.query.pushdown.jdbc.url*\)/\1/' conf/kylin.properties
+sed -i 's/#*\(kylin.query.pushdown.jdbc.driver*\)/\1/' conf/kylin.properties
+sed -i 's/#*\(kylin.query.pushdown.jdbc.username*\)/\1/' conf/kylin.properties
+
 ${KYLIN_HOME}/bin/kylin.sh start
 
 echo "Wait 3 minutes for service start."
@@ -67,10 +77,11 @@ sleep 3m
 cd $dir/smoke-test
 python testBuildCube.py     || { exit 1; }
 python testQuery.py         || { exit 1; }
+python testDiag.py         || { exit 1; }
 cd -
 
 # Tear down stage
 ${KYLIN_HOME}/bin/metastore.sh clean --delete true
-${KYLIN_HOME}/bin/kylin.sh org.apache.kylin.storage.hbase.util.StorageCleanupJob --delete true
+${KYLIN_HOME}/bin/kylin.sh org.apache.kylin.tool.StorageCleanupJob --delete true
 ${KYLIN_HOME}/bin/metastore.sh reset
 ${KYLIN_HOME}/bin/kylin.sh stop

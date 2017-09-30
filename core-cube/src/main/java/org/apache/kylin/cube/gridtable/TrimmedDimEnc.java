@@ -18,14 +18,16 @@
 
 package org.apache.kylin.cube.gridtable;
 
-import org.apache.kylin.dimension.DimensionEncoding;
-import org.apache.kylin.metadata.datatype.DataTypeSerializer;
-
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
+import org.apache.kylin.dimension.DimensionEncoding;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
+
 public class TrimmedDimEnc extends DimensionEncoding {
+    private static final long serialVersionUID = 1L;
+
     int fixedLen;
 
     //no-arg constructor is required for Externalizable
@@ -42,7 +44,7 @@ public class TrimmedDimEnc extends DimensionEncoding {
     }
 
     @Override
-    public void encode(byte[] value, int valueLen, byte[] output, int outputOffset) {
+    public void encode(String valueStr, byte[] output, int outputOffset) {
         throw new UnsupportedOperationException();
     }
 

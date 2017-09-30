@@ -22,10 +22,9 @@ import java.io.DataInput;
 import java.io.DataOutput;
 import java.io.IOException;
 import java.io.PrintStream;
-import java.io.UnsupportedEncodingException;
 
 import org.apache.kylin.common.util.DateFormat;
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.common.util.Dictionary;
 
 /**
  */
@@ -85,34 +84,6 @@ public class TimeStrDictionary extends Dictionary<String> {
     }
 
     @Override
-    final protected int getIdFromValueBytesImpl(byte[] value, int offset, int len, int roundingFlag) {
-        try {
-            return getIdFromValue(new String(value, offset, len, "ISO-8859-1"));
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e); // never happen
-        }
-    }
-
-    @Override
-    final protected byte[] getValueBytesFromIdImpl(int id) {
-        String date = getValueFromId(id);
-        byte bytes[];
-        try {
-            bytes = date.getBytes("ISO-8859-1");
-        } catch (UnsupportedEncodingException e) {
-            throw new RuntimeException(e); // never happen
-        }
-        return bytes;
-    }
-
-    @Override
-    final protected int getValueBytesFromIdImpl(int id, byte[] returnValue, int offset) {
-        byte bytes[] = getValueBytesFromIdImpl(id);
-        System.arraycopy(bytes, 0, returnValue, offset, bytes.length);
-        return bytes.length;
-    }
-
-    @Override
     public void dump(PrintStream out) {
         out.println(this.toString());
     }
@@ -120,6 +91,11 @@ public class TimeStrDictionary extends Dictionary<String> {
     @Override
     public String toString() {
         return "TimeStrDictionary supporting from 1970-01-01 00:00:00 to 2038/01/19 03:14:07 (does not support millisecond)";
+    }
+
+    @Override
+    public int hashCode() {
+        return 0;
     }
 
     @Override
@@ -142,4 +118,5 @@ public class TimeStrDictionary extends Dictionary<String> {
     @Override
     public void readFields(DataInput in) throws IOException {
     }
+
 }

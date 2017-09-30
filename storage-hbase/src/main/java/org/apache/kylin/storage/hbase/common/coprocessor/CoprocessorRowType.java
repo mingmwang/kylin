@@ -27,7 +27,6 @@ import org.apache.kylin.common.util.BytesUtil;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.cuboid.Cuboid;
 import org.apache.kylin.cube.kv.RowKeyColumnIO;
-import org.apache.kylin.invertedindex.index.TableRecordInfo;
 import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
@@ -37,19 +36,8 @@ import com.google.common.collect.Maps;
 /**
  * @author yangli9
  */
+@Deprecated // used by v1 HBase coprocessor
 public class CoprocessorRowType {
-
-    //for endpoint
-    public static CoprocessorRowType fromTableRecordInfo(TableRecordInfo tableRecordInfo, List<TblColRef> cols) {
-
-        int[] colSizes = new int[cols.size()];
-        for (int i = 0; i < cols.size(); i++) {
-            colSizes[i] = tableRecordInfo.getDigest().length(i);
-        }
-
-        //TODO:check0
-        return new CoprocessorRowType(cols.toArray(new TblColRef[cols.size()]), colSizes, 0);
-    }
 
     //for observer
     public static CoprocessorRowType fromCuboid(CubeSegment seg, Cuboid cuboid) {
@@ -85,6 +73,7 @@ public class CoprocessorRowType {
             for (int i = 0; i < n; i++) {
                 BytesUtil.writeAsciiString(o.columns[i].getTable(), out);
                 BytesUtil.writeAsciiString(o.columns[i].getName(), out);
+                BytesUtil.writeAsciiString(o.columns[i].getDatatype(), out);
                 BytesUtil.writeVInt(o.columnSizes[i], out);
             }
         }
@@ -98,13 +87,15 @@ public class CoprocessorRowType {
             for (int i = 0; i < n; i++) {
                 String tableName = BytesUtil.readAsciiString(in);
                 String colName = BytesUtil.readAsciiString(in);
+                String datatype = BytesUtil.readAsciiString(in);
                 TableDesc table = new TableDesc();
                 table.setName(tableName);
                 ColumnDesc col = new ColumnDesc();
                 col.setTable(table);
                 col.setName(colName);
+                col.setDatatype(datatype);
                 col.init(table);
-                cols[i] = new TblColRef(col);
+                cols[i] = col.getRef();
 
                 int colSize = BytesUtil.readVInt(in);
                 colSizes[i] = colSize;

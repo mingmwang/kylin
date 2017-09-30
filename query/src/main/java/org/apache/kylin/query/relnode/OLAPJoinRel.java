@@ -70,6 +70,7 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
 
     private OLAPContext context;
     private ColumnRowType columnRowType;
+    private int columnRowTypeLeftRightCut;
     private boolean isTopJoin;
     private boolean hasSubQuery;
 
@@ -89,7 +90,8 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
         final JoinInfo joinInfo = JoinInfo.of(left, right, condition);
         assert joinInfo.isEqui();
         try {
-            return new OLAPJoinRel(getCluster(), traitSet, left, right, condition, joinInfo.leftKeys, joinInfo.rightKeys, variablesSet, joinType);
+            return new OLAPJoinRel(getCluster(), traitSet, left, right, condition, joinInfo.leftKeys,
+                    joinInfo.rightKeys, variablesSet, joinType);
         } catch (InvalidRelException e) {
             // Semantic error not possible. Must be a bug. Convert to internal error.
             throw new AssertionError(e);
@@ -106,46 +108,95 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
         return super.estimateRowCount(mq) * 0.1;
     }
 
+    //when OLAPJoinPushThroughJoinRule is applied, a "MerelyPermutation" project rel will be created
+    private boolean isParentMerelyPermutation(OLAPImplementor implementor) {
+        if (implementor.getParentNode() instanceof OLAPProjectRel) {
+            return ((OLAPProjectRel) implementor.getParentNode()).isMerelyPermutation();
+        }
+        return false;
+    }
+
     @Override
     public void implementOLAP(OLAPImplementor implementor) {
 
         // create context for root join
-        if (!(implementor.getParentNode() instanceof OLAPJoinRel)) {
+        if (!(implementor.getParentNode() instanceof OLAPJoinRel) && !isParentMerelyPermutation(implementor)) {
             implementor.allocateContext();
         }
+
         this.context = implementor.getContext();
+        this.context.allOlapJoins.add(this);
         this.isTopJoin = !this.context.hasJoin;
         this.context.hasJoin = true;
 
+        boolean leftHasSubquery = false;
+        boolean rightHasSubquery = false;
+
         // as we keep the first table as fact table, we need to visit from left to right
+        implementor.fixSharedOlapTableScanOnTheLeft(this);
         implementor.visitChild(this.left, this);
         if (this.context != implementor.getContext() || ((OLAPRel) this.left).hasSubQuery()) {
             this.hasSubQuery = true;
-            implementor.freeContext();
+            leftHasSubquery = true;
+            // if child is also an OLAPJoin, then the context has already been popped
+            if (this.context != implementor.getContext()) {
+                implementor.freeContext();
+            }
         }
+
+        if (leftHasSubquery) {
+            // After KYLIN-2579, leftHasSubquery means right side have to be separate olap context 
+            implementor.setNewOLAPContextRequired(true);
+        }
+
+        implementor.fixSharedOlapTableScanOnTheRight(this);
         implementor.visitChild(this.right, this);
         if (this.context != implementor.getContext() || ((OLAPRel) this.right).hasSubQuery()) {
             this.hasSubQuery = true;
-            implementor.freeContext();
+            rightHasSubquery = true;
+            // if child is also an OLAPJoin, then the context has already been popped
+
+            if (leftHasSubquery) {
+                Preconditions.checkState(!implementor.isNewOLAPContextRequired());//should have been satisfied
+                Preconditions.checkState(this.context != implementor.getContext(), "missing a new olapcontext");
+            }
+
+            if (this.context != implementor.getContext()) {
+                implementor.freeContext();
+            }
         }
 
         this.columnRowType = buildColumnRowType();
+
         if (isTopJoin) {
             this.context.afterJoin = true;
         }
 
         if (!this.hasSubQuery) {
-            this.context.allColumns.clear();
+//            this.context.allColumns.clear();
 
             // build JoinDesc
+            Preconditions.checkState(this.getCondition() instanceof RexCall, "Cartesian Join is not supported.");
+
             RexCall condition = (RexCall) this.getCondition();
             JoinDesc join = buildJoin(condition);
 
             JoinRelType joinRelType = this.getJoinType();
-            String joinType = joinRelType == JoinRelType.INNER ? "INNER" : joinRelType == JoinRelType.LEFT ? "LEFT" : null;
+            String joinType = joinRelType == JoinRelType.INNER ? "INNER"
+                    : joinRelType == JoinRelType.LEFT ? "LEFT" : null;
             join.setType(joinType);
 
             this.context.joins.add(join);
+        } else {
+            //When join contains subquery, the join-condition fields of fact_table will add into context.
+            Map<TblColRef, TblColRef> joinCol = new HashMap<TblColRef, TblColRef>();
+            translateJoinColumn(this.getCondition(), joinCol);
+
+            for (Map.Entry<TblColRef, TblColRef> columnPair : joinCol.entrySet()) {
+                TblColRef fromCol = (rightHasSubquery ? columnPair.getKey() : columnPair.getValue());
+                this.context.subqueryJoinParticipants.add(fromCol);
+            }
+            joinCol.clear();
         }
     }
 
@@ -156,12 +207,15 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
         ColumnRowType leftColumnRowType = olapLeft.getColumnRowType();
         columns.addAll(leftColumnRowType.getAllColumns());
 
+        this.columnRowTypeLeftRightCut = columns.size();
+
         OLAPRel olapRight = (OLAPRel) this.right;
         ColumnRowType rightColumnRowType = olapRight.getColumnRowType();
         columns.addAll(rightColumnRowType.getAllColumns());
 
         if (columns.size() != this.rowType.getFieldCount()) {
-            throw new IllegalStateException("RowType=" + this.rowType.getFieldCount() + ", ColumnRowType=" + columns.size());
+            throw new IllegalStateException(
+                    "RowType=" + this.rowType.getFieldCount() + ", ColumnRowType=" + columns.size());
         }
         return new ColumnRowType(columns);
     }
@@ -174,21 +228,13 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
         List<TblColRef> pkCols = new ArrayList<TblColRef>();
         List<String> fks = new ArrayList<String>();
         List<TblColRef> fkCols = new ArrayList<TblColRef>();
-        String factTable = context.firstTableScan.getTableName();
         for (Map.Entry<TblColRef, TblColRef> columnPair : joinColumns.entrySet()) {
             TblColRef fromCol = columnPair.getKey();
             TblColRef toCol = columnPair.getValue();
-            if (factTable.equalsIgnoreCase(fromCol.getTable())) {
-                fks.add(fromCol.getName());
-                fkCols.add(fromCol);
-                pks.add(toCol.getName());
-                pkCols.add(toCol);
-            } else {
-                fks.add(toCol.getName());
-                fkCols.add(toCol);
-                pks.add(fromCol.getName());
-                pkCols.add(fromCol);
-            }
+            fks.add(fromCol.getName());
+            fkCols.add(fromCol);
+            pks.add(toCol.getName());
+            pkCols.add(toCol);
         }
 
         JoinDesc join = new JoinDesc();
@@ -196,7 +242,14 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
         join.setForeignKeyColumns(fkCols.toArray(new TblColRef[fkCols.size()]));
         join.setPrimaryKey(pks.toArray(COLUMN_ARRAY_MARKER));
         join.setPrimaryKeyColumns(pkCols.toArray(new TblColRef[pkCols.size()]));
+        join.sortByFK();
         return join;
+    }
+
+    private void translateJoinColumn(RexNode condition, Map<TblColRef, TblColRef> joinCol) {
+        if (condition instanceof RexCall) {
+            translateJoinColumn((RexCall) condition, joinCol);
+        }
     }
 
     private void translateJoinColumn(RexCall condition, Map<TblColRef, TblColRef> joinColumns) {
@@ -212,7 +265,11 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
             TblColRef col0 = columnRowType.getColumnByIndex(op0.getIndex());
             RexInputRef op1 = (RexInputRef) operands.get(1);
             TblColRef col1 = columnRowType.getColumnByIndex(op1.getIndex());
-            joinColumns.put(col0, col1);
+            // map left => right
+            if (op0.getIndex() < columnRowTypeLeftRightCut)
+                joinColumns.put(col0, col1);
+            else
+                joinColumns.put(col1, col0);
         }
     }
 
@@ -256,7 +313,8 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
 
         PhysType physType = PhysTypeImpl.of(implementor.getTypeFactory(), getRowType(), pref.preferArray());
         RelOptTable factTable = context.firstTableScan.getTable();
-        MethodCallExpression exprCall = Expressions.call(factTable.getExpression(OLAPTable.class), "executeOLAPQuery", implementor.getRootExpression(), Expressions.constant(context.id));
+        MethodCallExpression exprCall = Expressions.call(factTable.getExpression(OLAPTable.class), "executeOLAPQuery",
+                implementor.getRootExpression(), Expressions.constant(context.id));
         return implementor.result(physType, Blocks.toBlock(exprCall));
     }
 
@@ -273,26 +331,29 @@ public class OLAPJoinRel extends EnumerableJoin implements OLAPRel {
         this.rowType = this.deriveRowType();
 
         if (this.isTopJoin && RewriteImplementor.needRewrite(this.context)) {
-            // find missed rewrite fields
-            int paramIndex = this.rowType.getFieldList().size();
-            List<RelDataTypeField> newFieldList = new LinkedList<RelDataTypeField>();
-            for (Map.Entry<String, RelDataType> rewriteField : this.context.rewriteFields.entrySet()) {
-                String fieldName = rewriteField.getKey();
-                if (this.rowType.getField(fieldName, true, false) == null) {
-                    RelDataType fieldType = rewriteField.getValue();
-                    RelDataTypeField newField = new RelDataTypeFieldImpl(fieldName, paramIndex++, fieldType);
-                    newFieldList.add(newField);
+            if (this.context.hasPrecalculatedFields()) {
+
+                // find missed rewrite fields
+                int paramIndex = this.rowType.getFieldList().size();
+                List<RelDataTypeField> newFieldList = new LinkedList<RelDataTypeField>();
+                for (Map.Entry<String, RelDataType> rewriteField : this.context.rewriteFields.entrySet()) {
+                    String fieldName = rewriteField.getKey();
+                    if (this.rowType.getField(fieldName, true, false) == null) {
+                        RelDataType fieldType = rewriteField.getValue();
+                        RelDataTypeField newField = new RelDataTypeFieldImpl(fieldName, paramIndex++, fieldType);
+                        newFieldList.add(newField);
+                    }
                 }
+
+                // rebuild row type
+                FieldInfoBuilder fieldInfo = getCluster().getTypeFactory().builder();
+                fieldInfo.addAll(this.rowType.getFieldList());
+                fieldInfo.addAll(newFieldList);
+                this.rowType = getCluster().getTypeFactory().createStructType(fieldInfo);
+
+                // rebuild columns
+                this.columnRowType = this.buildColumnRowType();
             }
-
-            // rebuild row type
-            FieldInfoBuilder fieldInfo = getCluster().getTypeFactory().builder();
-            fieldInfo.addAll(this.rowType.getFieldList());
-            fieldInfo.addAll(newFieldList);
-            this.rowType = getCluster().getTypeFactory().createStructType(fieldInfo);
-
-            // rebuild columns
-            this.columnRowType = this.buildColumnRowType();
         }
     }
 

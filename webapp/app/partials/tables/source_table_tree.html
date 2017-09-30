@@ -27,7 +27,6 @@
             <div class="pull-right">
               <a class="btn btn-xs btn-primary" tooltip="Load Hive Table"  ng-if="userService.hasRole('ROLE_ADMIN')"  ng-click="openModal()"><i class="fa fa-download"></i></a>
               <a class="btn btn-xs btn-info" tooltip="Load Hive Table From Tree"  ng-if="userService.hasRole('ROLE_ADMIN')"  ng-click="openTreeModal()"><i class="fa fa-download"></i></a>
-              <a class="btn btn-xs btn-info" tooltip="UnLoad Hive Table"  ng-if="userService.hasRole('ROLE_ADMIN')"  ng-click="openUnLoadModal()"><i class="fa fa-remove"></i></a>
               <a class="btn btn-xs btn-primary" tooltip="Add Streaming Table"  ng-if="userService.hasRole('ROLE_ADMIN')"  ng-click="openStreamingSourceModal()"><i class="fa fa-area-chart"></i></a>
             </div>
         </div>
@@ -64,6 +63,7 @@
       <button class="btn btn-xs btn-primary" ng-if="node.label==''&&node.id==65535" ng-click="showAllClicked($parentNode)">Show All</button>
       {{node.label}}
     </treecontrol>
+    <label> <input type="checkbox" ng-model="$parent.isCalculate" >Calculate column cardinality</label>
   </div>
 
   <div class="modal-footer">
@@ -74,4 +74,3 @@
 </script>
 
 <div ng-include="'partials/tables/table_load.html'"></div>
-<div ng-include="'partials/tables/table_unload.html'"></div>

@@ -23,8 +23,8 @@ import static org.junit.Assert.assertEquals;
 
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
-import org.apache.kylin.engine.mr.HadoopUtil;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -43,7 +43,7 @@ public class CreateHTableTest extends LocalFileMetadataTestCase {
         conf.set("fs.default.name", "file:///");
         conf.set("mapreduce.framework.name", "local");
         conf.set("mapreduce.application.framework.path", "");
-        
+
         this.createTestMetadata();
 
     }

@@ -25,37 +25,46 @@
         </description>
     </property>
 
-	<property>
-		<name>mapred.compress.map.output</name>
-		<value>true</value>
-		<description>Compress map outputs</description>
-	</property>
+    <property>
+        <name>mapreduce.map.output.compress</name>
+        <value>true</value>
+        <description>Compress map outputs</description>
+    </property>
 
-	<property>
-		<name>mapred.map.output.compression.codec</name>
-		<value>org.apache.hadoop.io.compress.SnappyCodec</value>
-		<description>The compression codec to use for map outputs
-		</description>
-	</property>
-
-	<property>
-		<name>mapred.output.compress</name>
-		<value>true</value>
-		<description>Compress the output of a MapReduce job</description>
-	</property>
-
-	<property>
-		<name>mapred.output.compression.codec</name>
-		<value>org.apache.hadoop.io.compress.SnappyCodec</value>
-		<description>The compression codec to use for job outputs
-		</description>
-	</property>
-
-	<property>
-		<name>mapred.output.compression.type</name>
-		<value>BLOCK</value>
-		<description>The compression type to use for job outputs</description>
-	</property>
+    <!--
+    The default map outputs compress codec is org.apache.hadoop.io.compress.DefaultCodec,
+    if SnappyCodec is supported, org.apache.hadoop.io.compress.SnappyCodec could be used.
+    -->
+    <!--
+    <property>
+        <name>mapreduce.map.output.compress.codec</name>
+        <value>org.apache.hadoop.io.compress.SnappyCodec</value>
+        <description>The compression codec to use for map outputs
+        </description>
+    </property>
+    -->
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress</name>
+        <value>true</value>
+        <description>Compress the output of a MapReduce job</description>
+    </property>
+    <!--
+    The default job outputs compress codec is org.apache.hadoop.io.compress.DefaultCodec,
+    if SnappyCodec is supported, org.apache.hadoop.io.compress.SnappyCodec could be used.
+    -->
+    <!--
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress.codec</name>
+        <value>org.apache.hadoop.io.compress.SnappyCodec</value>
+        <description>The compression codec to use for job outputs
+        </description>
+    </property>
+    -->
+    <property>
+        <name>mapreduce.output.fileoutputformat.compress.type</name>
+        <value>BLOCK</value>
+        <description>The compression type to use for job outputs</description>
+    </property>
 
 
     <property>
@@ -71,28 +80,28 @@
     </property>
 
     <property>
-        <name>mapred.task.timeout</name>
-        <value>3600000</value>
+        <name>mapreduce.task.timeout</name>
+        <value>7200000</value>
         <description>Set task timeout to 1 hour</description>
     </property>
 
-	<!--Additional config for in-mem cubing, giving mapper more memory -->
-	<property>
-		<name>mapreduce.map.memory.mb</name>
-		<value>3072</value>
-		<description></description>
-	</property>
+    <!--Additional config for in-mem cubing, giving mapper more memory -->
+    <property>
+        <name>mapreduce.map.memory.mb</name>
+        <value>3072</value>
+        <description></description>
+    </property>
 
-	<property>
-		<name>mapreduce.map.java.opts</name>
-		<value>-Xmx2700m</value>
-		<description></description>
-	</property>
+    <property>
+        <name>mapreduce.map.java.opts</name>
+        <value>-Xmx2700m -XX:OnOutOfMemoryError='kill -9 %p'</value>
+        <description></description>
+    </property>
 
-	<property>
-		<name>mapreduce.task.io.sort.mb</name>
-		<value>200</value>
-		<description></description>
-	</property>
+    <property>
+        <name>mapreduce.task.io.sort.mb</name>
+        <value>200</value>
+        <description></description>
+    </property>
 
 </configuration>

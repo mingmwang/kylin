@@ -24,13 +24,13 @@ import java.nio.ByteBuffer;
  * 
  * http://bitcharmer.blogspot.co.uk/2013/12/how-to-serialise-array-of-doubles-with.html
  */
-public class DoubleDeltaSerializer {
+public class DoubleDeltaSerializer implements java.io.Serializable {
 
     // first 32 bits stores meta info
     static final int PRECISION_BITS = 3;
     static final int DELTA_SIZE_BITS = 6;
     static final int LENGTH_BITS = 23;
-    
+
     static final long[] MASKS = new long[64];
     {
         for (int i = 0; i < MASKS.length; i++) {
@@ -40,7 +40,6 @@ public class DoubleDeltaSerializer {
 
     final private int precision;
     final private int multiplier;
-
 
     transient ThreadLocal<long[]> deltasThreadLocal;
 
@@ -56,10 +55,9 @@ public class DoubleDeltaSerializer {
 
         this.precision = precision;
         this.multiplier = (int) Math.pow(10, precision);
-        this.deltasThreadLocal = new ThreadLocal<long[]>();
     }
 
-    public void serialize(double values[], ByteBuffer buf) {
+    public void serialize(double[] values, ByteBuffer buf) {
         long[] deltas = calculateDeltas(values);
         int deltaSize = maxDeltaSize(deltas, values.length - 1);
 
@@ -113,12 +111,16 @@ public class DoubleDeltaSerializer {
         int len = values.length - 1;
         len = Math.max(0, len);
 
+        if (deltasThreadLocal == null) {
+            deltasThreadLocal = new ThreadLocal<>();
+        }
+
         long[] deltas = deltasThreadLocal.get();
         if (deltas == null || deltas.length < len) {
             deltas = new long[len];
             deltasThreadLocal.set(deltas);
         }
-                
+
         if (len == 0)
             return deltas;
 
@@ -144,17 +146,17 @@ public class DoubleDeltaSerializer {
     public double[] deserialize(ByteBuffer buf) {
         int meta = buf.getInt();
         int len = meta & ((1 << LENGTH_BITS) - 1);
-        
+
         double[] result = new double[len];
         deserialize(buf, meta, result);
-        
+
         return result;
     }
-    
+
     public int deserialize(ByteBuffer buf, double[] result) {
         return deserialize(buf, buf.getInt(), result);
     }
-    
+
     private int deserialize(ByteBuffer buf, int meta, double[] result) {
         int precision = meta >>> (DELTA_SIZE_BITS + LENGTH_BITS);
         assert precision == this.precision;
@@ -172,7 +174,7 @@ public class DoubleDeltaSerializer {
         int left = 0;
         for (int i = 1; i < len; i++) {
             long delta = 0;
-            
+
             if (left >= deltaSize) {
                 delta = (bits >> (left - deltaSize)) & MASKS[deltaSize];
                 left -= deltaSize;
@@ -184,7 +186,7 @@ public class DoubleDeltaSerializer {
                 delta |= (bits >> (left - more)) & MASKS[more];
                 left -= more;
             }
-            
+
             current += delta;
             result[i] = (double) current / multiplier;
         }

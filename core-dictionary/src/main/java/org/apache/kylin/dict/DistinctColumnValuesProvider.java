@@ -19,7 +19,7 @@
 package org.apache.kylin.dict;
 
 import org.apache.kylin.metadata.model.TblColRef;
-import org.apache.kylin.source.ReadableTable;
+import org.apache.kylin.source.IReadableTable;
 
 /**
  * To build dictionary, we need a list of distinct values on a column.
@@ -31,5 +31,5 @@ import org.apache.kylin.source.ReadableTable;
 public interface DistinctColumnValuesProvider {
 
     /** Return a ReadableTable contains only one column, each row being a distinct value. */
-    public ReadableTable getDistinctValuesFor(TblColRef col);
+    public IReadableTable getDistinctValuesFor(TblColRef col);
 }

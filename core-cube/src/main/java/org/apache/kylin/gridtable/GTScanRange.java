@@ -45,10 +45,10 @@ public class GTScanRange {
     public GTScanRange replaceGTInfo(final GTInfo gtInfo) {
         List<GTRecord> newFuzzyKeys = Lists.newArrayList();
         for (GTRecord input : fuzzyKeys) {
-            newFuzzyKeys.add(new GTRecord(gtInfo, input.maskForEqualHashComp(), input.cols));
+            newFuzzyKeys.add(new GTRecord(gtInfo, input.cols));
         }
-        return new GTScanRange(new GTRecord(gtInfo, pkStart.maskForEqualHashComp(), pkStart.cols), //
-                new GTRecord(gtInfo, pkEnd.maskForEqualHashComp(), pkEnd.cols), //
+        return new GTScanRange(new GTRecord(gtInfo, pkStart.cols), //
+                new GTRecord(gtInfo, pkEnd.cols), //
                 newFuzzyKeys);
     }
 

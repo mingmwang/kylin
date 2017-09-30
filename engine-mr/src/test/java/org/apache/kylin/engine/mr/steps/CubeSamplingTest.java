@@ -22,9 +22,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import org.apache.commons.lang.RandomStringUtils;
-import org.apache.kylin.measure.hllc.HyperLogLogPlusCounter;
-import org.apache.kylin.common.util.ByteArray;
 import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.measure.hllc.HLLCounter;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -40,18 +39,17 @@ public class CubeSamplingTest {
     private static final int ROW_LENGTH = 10;
 
     private final List<String> row = new ArrayList<String>(ROW_LENGTH);
-    private final ByteArray[] row_index = new ByteArray[ROW_LENGTH];
 
     private Integer[][] allCuboidsBitSet;
     private HashFunction hf = null;
     private long baseCuboidId;
-    private HyperLogLogPlusCounter[] allCuboidsHLL = null;
+    private HLLCounter[] allCuboidsHLL = null;
     private final byte[] seperator = Bytes.toBytes(",");
 
     @Before
     public void setup() {
 
-        baseCuboidId = (1l << ROW_LENGTH) - 1;
+        baseCuboidId = (1L << ROW_LENGTH) - 1;
         List<Long> allCuboids = Lists.newArrayList();
         List<Integer[]> allCuboidsBitSetList = Lists.newArrayList();
         for (long i = 1; i < baseCuboidId; i++) {
@@ -61,18 +59,14 @@ public class CubeSamplingTest {
 
         allCuboidsBitSet = allCuboidsBitSetList.toArray(new Integer[allCuboidsBitSetList.size()][]);
         System.out.println("Totally have " + allCuboidsBitSet.length + " cuboids.");
-        allCuboidsHLL = new HyperLogLogPlusCounter[allCuboids.size()];
+        allCuboidsHLL = new HLLCounter[allCuboids.size()];
         for (int i = 0; i < allCuboids.size(); i++) {
-            allCuboidsHLL[i] = new HyperLogLogPlusCounter(14);
+            allCuboidsHLL[i] = new HLLCounter(14);
         }
 
         //  hf = Hashing.goodFastHash(32);
         //        hf = Hashing.md5();
         hf = Hashing.murmur3_32();
-
-        for (int i = 0; i < ROW_LENGTH; i++) {
-            row_index[i] = new ByteArray();
-        }
     }
 
     private void addCuboidBitSet(long cuboidId, List<Integer[]> allCuboidsBitSet) {
@@ -107,16 +101,17 @@ public class CubeSamplingTest {
     }
 
     private void putRowKeyToHLL(List<String> row) {
+        byte[][] row_index = new byte[ROW_LENGTH][];
         int x = 0;
         for (String field : row) {
             Hasher hc = hf.newHasher();
-            row_index[x++].set(hc.putString(field).hash().asBytes());
+            row_index[x++] = hc.putString(field).hash().asBytes();
         }
 
         for (int i = 0, n = allCuboidsBitSet.length; i < n; i++) {
             Hasher hc = hf.newHasher();
             for (int position = 0; position < allCuboidsBitSet[i].length; position++) {
-                hc.putBytes(row_index[allCuboidsBitSet[i][position]].array());
+                hc.putBytes(row_index[allCuboidsBitSet[i][position]]);
                 hc.putBytes(seperator);
             }
             allCuboidsHLL[i].add(hc.hash().asBytes());

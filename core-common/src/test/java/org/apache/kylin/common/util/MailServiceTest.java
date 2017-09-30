@@ -51,8 +51,8 @@ public class MailServiceTest extends LocalFileMetadataTestCase {
         boolean sent = sendTestEmail(mailservice);
         assert sent;
 
-        // set mail.enabled=false, and run again, this time should be no mail delivered
-        config.setMailEnabled(false);
+        System.setProperty("kylin.job.notification-enabled", "false");
+        // set kylin.job.notification-enabled=false, and run again, this time should be no mail delivered
         mailservice = new MailService(config);
         sent = sendTestEmail(mailservice);
         assert !sent;

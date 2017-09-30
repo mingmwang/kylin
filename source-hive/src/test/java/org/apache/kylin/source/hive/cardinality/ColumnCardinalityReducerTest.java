@@ -33,9 +33,9 @@ import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.mrunit.mapreduce.ReduceDriver;
 import org.apache.hadoop.mrunit.types.Pair;
-import org.apache.kylin.measure.hllc.HyperLogLogPlusCounter;
 import org.apache.kylin.common.util.Bytes;
-import org.apache.kylin.cube.kv.RowConstants;
+import org.apache.kylin.measure.BufferedMeasureCodec;
+import org.apache.kylin.measure.hllc.HLLCounter;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -57,7 +57,7 @@ public class ColumnCardinalityReducerTest {
     }
 
     private byte[] getBytes(String str) throws IOException {
-        HyperLogLogPlusCounter hllc = new HyperLogLogPlusCounter();
+        HLLCounter hllc = new HLLCounter();
         StringTokenizer tokenizer = new StringTokenizer(str, ColumnCardinalityMapper.DEFAULT_DELIM);
         int i = 0;
         while (tokenizer.hasMoreTokens()) {
@@ -65,7 +65,7 @@ public class ColumnCardinalityReducerTest {
             i++;
             hllc.add(Bytes.toBytes(temp));
         }
-        ByteBuffer buf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
+        ByteBuffer buf = ByteBuffer.allocate(BufferedMeasureCodec.DEFAULT_BUFFER_SIZE);
         buf.clear();
         hllc.writeRegisters(buf);
         buf.flip();

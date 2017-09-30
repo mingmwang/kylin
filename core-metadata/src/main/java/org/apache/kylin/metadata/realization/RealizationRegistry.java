@@ -20,18 +20,17 @@ package org.apache.kylin.metadata.realization;
 
 import java.io.IOException;
 import java.util.Collections;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.apache.kylin.common.KylinConfig;
-import org.reflections.Reflections;
-import org.reflections.scanners.SubTypesScanner;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
 /**
@@ -39,7 +38,7 @@ import com.google.common.collect.Maps;
 public class RealizationRegistry {
 
     private static final Logger logger = LoggerFactory.getLogger(RealizationRegistry.class);
-    private static final ConcurrentHashMap<KylinConfig, RealizationRegistry> CACHE = new ConcurrentHashMap<KylinConfig, RealizationRegistry>();
+    private static final ConcurrentMap<KylinConfig, RealizationRegistry> CACHE = new ConcurrentHashMap<KylinConfig, RealizationRegistry>();
 
     public static RealizationRegistry getInstance(KylinConfig config) {
         RealizationRegistry r = CACHE.get(config);
@@ -55,6 +54,9 @@ public class RealizationRegistry {
             try {
                 r = new RealizationRegistry(config);
                 CACHE.put(config, r);
+                if (CACHE.size() > 1) {
+                    logger.warn("More than one singleton exist");
+                }
                 return r;
             } catch (IOException e) {
                 throw new IllegalStateException("Failed to init CubeManager from " + config, e);
@@ -75,30 +77,36 @@ public class RealizationRegistry {
         logger.info("Initializing RealizationRegistry with metadata url " + config);
         this.config = config;
         init();
+
+        Broadcaster.getInstance(config).registerListener(new Broadcaster.Listener() {
+            @Override
+            public void onClearAll(Broadcaster broadcaster) throws IOException {
+                clearCache();
+            }
+        }, "");
     }
 
     private void init() {
         providers = Maps.newConcurrentMap();
 
         // use reflection to load providers
-        final Set<Class<? extends IRealizationProvider>> realizationProviders = new Reflections("org.apache.kylin", new SubTypesScanner()).getSubTypesOf(IRealizationProvider.class);
-        List<Throwable> es = Lists.newArrayList();
-        for (Class<? extends IRealizationProvider> cls : realizationProviders) {
+        String[] providerNames = config.getRealizationProviders();
+        for (String clsName : providerNames) {
             try {
+                Class<? extends IRealizationProvider> cls = ClassUtil.forName(clsName, IRealizationProvider.class);
                 IRealizationProvider p = (IRealizationProvider) cls.getMethod("getInstance", KylinConfig.class).invoke(null, config);
                 providers.put(p.getRealizationType(), p);
 
             } catch (Exception | NoClassDefFoundError e) {
-                es.add(e);
-            }
-
-            if (es.size() > 0) {
-                for (Throwable exceptionOrError : es) {
-                    logger.error("Create new store instance failed ", exceptionOrError);
-                }
-                throw new IllegalArgumentException("Failed to find metadata store by url: " + config.getMetadataUrl());
+                if (e instanceof ClassNotFoundException || e instanceof NoClassDefFoundError)
+                    logger.warn("Failed to create realization provider " + e);
+                else
+                    logger.error("Failed to create realization provider", e);
             }
         }
+
+        if (providers.isEmpty())
+            throw new IllegalArgumentException("Failed to find realization provider by url: " + config.getMetadataUrl());
 
         logger.info("RealizationRegistry is " + providers);
     }

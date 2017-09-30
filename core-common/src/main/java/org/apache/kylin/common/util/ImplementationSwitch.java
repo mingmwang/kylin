@@ -22,6 +22,8 @@ import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Maps;
+
 /**
  * Provide switch between different implementations of a same interface.
  * Each implementation is identified by an integer ID.
@@ -32,10 +34,12 @@ public class ImplementationSwitch<I> {
 
     final private Object[] instances;
     private Class<I> interfaceClz;
+    private Map<Integer, String> impls = Maps.newHashMap();
 
     public ImplementationSwitch(Map<Integer, String> impls, Class<I> interfaceClz) {
+        this.impls.putAll(impls);
         this.interfaceClz = interfaceClz;
-        this.instances = initInstances(impls);
+        this.instances = initInstances(this.impls);
     }
 
     private Object[] initInstances(Map<Integer, String> impls) {
@@ -48,21 +52,26 @@ public class ImplementationSwitch<I> {
 
         Object[] result = new Object[maxId + 1];
 
-        for (Integer id : impls.keySet()) {
-            String clzName = impls.get(id);
+        return result;
+    }
+
+    public synchronized I get(int id) {
+        String clzName = impls.get(id);
+        if (clzName == null) {
+            throw new IllegalArgumentException("Implementation class missing, ID " + id + ", interface " + interfaceClz.getName());
+        }
+
+        @SuppressWarnings("unchecked")
+        I result = (I) instances[id];
+
+        if (result == null) {
             try {
-                result[id] = ClassUtil.newInstance(clzName);
+                result = (I) ClassUtil.newInstance(clzName);
+                instances[id] = result;
             } catch (Exception ex) {
                 logger.warn("Implementation missing " + clzName + " - " + ex);
             }
         }
-
-        return result;
-    }
-
-    public I get(int id) {
-        @SuppressWarnings("unchecked")
-        I result = (I) instances[id];
 
         if (result == null)
             throw new IllegalArgumentException("Implementations missing, ID " + id + ", interface " + interfaceClz.getName());

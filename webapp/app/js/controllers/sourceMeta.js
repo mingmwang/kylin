@@ -26,7 +26,7 @@ KylinApp
     $scope.tableModel.selectedSrcTable = {};
     $scope.window = 0.68 * $window.innerHeight;
     $scope.tableConfig = tableConfig;
-
+    $scope.isCalculate = true;
 
     $scope.state = {
       filterAttr: 'id', filterReverse: false, reverseColumn: 'id',
@@ -97,6 +97,9 @@ KylinApp
           projectName: function () {
             return $scope.projectModel.selectedProject;
           },
+          isCalculate: function () {
+            return $scope.isCalculate;
+          },
           scope: function () {
             return $scope;
           }
@@ -119,28 +122,8 @@ KylinApp
           projectName:function(){
             return  $scope.projectModel.selectedProject;
           },
-          scope: function () {
-            return $scope;
-          }
-        }
-      });
-    };
-
-    $scope.openUnLoadModal = function () {
-      if(!$scope.projectModel.selectedProject){
-        SweetAlert.swal('Oops...', "Please select a project.", 'info');
-        return;
-      }
-      $modal.open({
-        templateUrl: 'removeHiveTable.html',
-        controller: ModalInstanceCtrl,
-        backdrop : 'static',
-        resolve: {
-          tableNames: function () {
-            return $scope.tableNames;
-          },
-          projectName: function () {
-            return $scope.projectModel.selectedProject;
+          isCalculate: function () {
+            return $scope.isCalculate;
           },
           scope: function () {
             return $scope;
@@ -149,9 +132,99 @@ KylinApp
       });
     };
 
-    var ModalInstanceCtrl = function ($scope, $location, $modalInstance, tableNames, MessageService, projectName, scope,kylinConfig) {
+    $scope.reloadTable = function (tableName){
+      var delay = $q.defer();
+      loadingRequest.show();
+      TableService.loadHiveTable({tableName: tableName, action: $scope.projectModel.selectedProject}, {calculate: $scope.isCalculate}, function (result) {
+        var loadTableInfo = "";
+        angular.forEach(result['result.loaded'], function (table) {
+          loadTableInfo += "\n" + table;
+        })
+        var unloadedTableInfo = "";
+        angular.forEach(result['result.unloaded'], function (table) {
+          unloadedTableInfo += "\n" + table;
+        })
+        if (result['result.unloaded'].length != 0 && result['result.loaded'].length == 0) {
+          SweetAlert.swal('Failed!', 'Failed to load following table(s): ' + unloadedTableInfo, 'error');
+        }
+        if (result['result.loaded'].length != 0 && result['result.unloaded'].length == 0) {
+          SweetAlert.swal('Success!', 'The following table(s) have been successfully loaded: ' + loadTableInfo, 'success');
+        }
+        if (result['result.loaded'].length != 0 && result['result.unloaded'].length != 0) {
+          SweetAlert.swal('Partial loaded!', 'The following table(s) have been successfully loaded: ' + loadTableInfo + "\n\n Failed to load following table(s):" + unloadedTableInfo, 'warning');
+        }
+        loadingRequest.hide();
+        delay.resolve("");
+      }, function (e) {
+        if (e.data && e.data.exception) {
+          var message = e.data.exception;
+          var msg = !!(message) ? message : 'Failed to take action.';
+          SweetAlert.swal('Oops...', msg, 'error');
+        } else {
+          SweetAlert.swal('Oops...', "Failed to take action.", 'error');
+        }
+        loadingRequest.hide();
+      })
+       return delay.promise;
+    }
+
+
+
+    $scope.unloadTable = function (tableName) {
+      SweetAlert.swal({
+            title: "",
+            text: "Are you sure to unload this table?",
+            showCancelButton: true,
+            confirmButtonColor: '#DD6B55',
+            confirmButtonText: "Yes",
+            cancelButtonText: "No",
+            closeOnConfirm: true
+      }, function (isConfirm) {
+        if (isConfirm) {
+          if (!$scope.projectModel.selectedProject) {
+            SweetAlert.swal('', 'Please choose your project first!.', 'info');
+            return;
+          }
+          loadingRequest.show();
+          TableService.unLoadHiveTable({tableName: tableName, action: $scope.projectModel.selectedProject}, {}, function (result) {
+            var removedTableInfo = "";
+            angular.forEach(result['result.unload.success'], function (table) {
+              removedTableInfo += "\n" + table;
+            })
+            var unRemovedTableInfo = "";
+            angular.forEach(result['result.unload.fail'], function (table) {
+              unRemovedTableInfo += "\n" + table;
+            })
+            if (result['result.unload.fail'].length != 0 && result['result.unload.success'].length == 0) {
+              SweetAlert.swal('Failed!', 'Failed to unload following table(s): ' + unRemovedTableInfo, 'error');
+            }
+            if (result['result.unload.success'].length != 0 && result['result.unload.fail'].length == 0) {
+              SweetAlert.swal('Success!', 'The following table(s) have been successfully unloaded: ' + removedTableInfo, 'success');
+            }
+            if (result['result.unload.success'].length != 0 && result['result.unload.fail'].length != 0) {
+              SweetAlert.swal('Partial unloaded!', 'The following table(s) have been successfully unloaded: ' + removedTableInfo + "\n\n Failed to unload following table(s):" + unRemovedTableInfo, 'warning');
+            }
+            loadingRequest.hide();
+            $scope.aceSrcTbLoaded(true);
+          }, function (e) {
+            if (e.data && e.data.exception) {
+              var message = e.data.exception;
+              var msg = !!(message) ? message : 'Failed to take action.';
+              SweetAlert.swal('Oops...', msg, 'error');
+            } else {
+              SweetAlert.swal('Oops...', "Failed to take action.", 'error');
+            }
+            loadingRequest.hide();
+          })
+        }
+      })
+    }
+
+    var ModalInstanceCtrl = function ($scope, $location, $modalInstance, tableNames, MessageService, projectName, isCalculate, scope, kylinConfig) {
       $scope.tableNames = "";
       $scope.projectName = projectName;
+      $scope.isCalculate = isCalculate;
+
       $scope.cancel = function () {
         $modalInstance.dismiss('cancel');
       };
@@ -179,6 +252,15 @@ KylinApp
           }
           $scope.hiveLoaded = true;
           $scope.showMoreDatabases();
+        }, function (e) {
+          if (e.data && e.data.exception) {
+            var message = e.data.exception;
+            var msg = !!(message) ? message : 'Failed to take action.';
+            SweetAlert.swal('Oops...', msg, 'error');
+          } else {
+            SweetAlert.swal('Oops...', "Failed to take action.", 'error');
+          }
+          $scope.hiveLoaded = true;
         });
       }
 
@@ -319,7 +401,7 @@ KylinApp
         }
 
         if ($scope.tableNames.trim() === "") {
-          SweetAlert.swal('', 'Please input table(s) you want to synchronize.', 'info');
+          SweetAlert.swal('', 'Please input table(s) you want to load.', 'info');
           return;
         }
 
@@ -329,90 +411,44 @@ KylinApp
         }
 
         $scope.cancel();
-        loadingRequest.show();
-        TableService.loadHiveTable({tableName: $scope.tableNames, action: projectName}, {}, function (result) {
-          var loadTableInfo = "";
-          angular.forEach(result['result.loaded'], function (table) {
-            loadTableInfo += "\n" + table;
-          })
-          var unloadedTableInfo = "";
-          angular.forEach(result['result.unloaded'], function (table) {
-            unloadedTableInfo += "\n" + table;
-          })
-
-          if (result['result.unloaded'].length != 0 && result['result.loaded'].length == 0) {
-            SweetAlert.swal('Failed!', 'Failed to synchronize following table(s): ' + unloadedTableInfo, 'error');
-          }
-          if (result['result.loaded'].length != 0 && result['result.unloaded'].length == 0) {
-            SweetAlert.swal('Success!', 'The following table(s) have been successfully synchronized: ' + loadTableInfo, 'success');
-          }
-          if (result['result.loaded'].length != 0 && result['result.unloaded'].length != 0) {
-            SweetAlert.swal('Partial loaded!', 'The following table(s) have been successfully synchronized: ' + loadTableInfo + "\n\n Failed to synchronize following table(s):" + unloadedTableInfo, 'warning');
-          }
-          loadingRequest.hide();
-          scope.aceSrcTbLoaded(true);
-
-        }, function (e) {
-          if (e.data && e.data.exception) {
-            var message = e.data.exception;
-            var msg = !!(message) ? message : 'Failed to take action.';
-            SweetAlert.swal('Oops...', msg, 'error');
-          } else {
-            SweetAlert.swal('Oops...', "Failed to take action.", 'error');
-          }
-          loadingRequest.hide();
-        })
+        scope.reloadTable($scope.tableNames).then(function(){
+             scope.aceSrcTbLoaded(true);
+           });
       }
 
 
-    $scope.remove = function () {
-        if ($scope.tableNames.trim() === "") {
-          SweetAlert.swal('', 'Please input table(s) you want to synchronize.', 'info');
-          return;
-        }
 
-        if (!$scope.projectName) {
-          SweetAlert.swal('', 'Please choose your project first!.', 'info');
-          return;
-        }
-
-        $scope.cancel();
-        loadingRequest.show();
-        TableService.unLoadHiveTable({tableName: $scope.tableNames, action: projectName}, {}, function (result) {
-          var removedTableInfo = "";
-          angular.forEach(result['result.unload.success'], function (table) {
-            removedTableInfo += "\n" + table;
-          })
-          var unRemovedTableInfo = "";
-          angular.forEach(result['result.unload.fail'], function (table) {
-            unRemovedTableInfo += "\n" + table;
-          })
-
-          if (result['result.unload.fail'].length != 0 && result['result.unload.success'].length == 0) {
-            SweetAlert.swal('Failed!', 'Failed to synchronize following table(s): ' + unRemovedTableInfo, 'error');
-          }
-          if (result['result.unload.success'].length != 0 && result['result.unload.fail'].length == 0) {
-            SweetAlert.swal('Success!', 'The following table(s) have been successfully synchronized: ' + removedTableInfo, 'success');
-          }
-          if (result['result.unload.success'].length != 0 && result['result.unload.fail'].length != 0) {
-            SweetAlert.swal('Partial unloaded!', 'The following table(s) have been successfully synchronized: ' + removedTableInfo + "\n\n Failed to synchronize following table(s):" + unRemovedTableInfo, 'warning');
-          }
-          loadingRequest.hide();
-          scope.aceSrcTbLoaded(true);
-
-        }, function (e) {
-          if (e.data && e.data.exception) {
-            var message = e.data.exception;
-            var msg = !!(message) ? message : 'Failed to take action.';
-            SweetAlert.swal('Oops...', msg, 'error');
-          } else {
-            SweetAlert.swal('Oops...', "Failed to take action.", 'error');
-          }
-          loadingRequest.hide();
-        })
-      }
     };
 
+    $scope.editStreamingConfig = function(tableName){
+      var modalInstance = $modal.open({
+        templateUrl: 'editStreamingSource.html',
+        controller: EditStreamingSourceCtrl,
+        backdrop : 'static',
+        resolve: {
+          tableNames: function () {
+            return $scope.tableNames;
+          },
+          projectName: function () {
+            return $scope.projectModel.selectedProject;
+          },
+          tableName: function(){
+            return tableName;
+          },
+          scope: function () {
+            return $scope;
+          }
+        }
+      });
+
+      modalInstance.result.then(function () {
+        $scope.$broadcast('StreamingConfigEdited');
+      }, function () {
+        $scope.$broadcast('StreamingConfigEdited');
+      });
+
+
+    }
 
     //streaming model
     $scope.openStreamingSourceModal = function () {
@@ -438,17 +474,87 @@ KylinApp
       });
     };
 
+    var EditStreamingSourceCtrl = function ($scope, $interpolate, $templateCache, tableName, $modalInstance, tableNames, MessageService, projectName, scope, tableConfig,cubeConfig,StreamingModel,StreamingService) {
+
+      $scope.state = {
+        tableName : tableName,
+        mode: "edit",
+        target:"kfkConfig"
+      }
+
+      $scope.cancel = function () {
+        $modalInstance.dismiss('cancel');
+      };
+
+      $scope.projectName = projectName;
+      $scope.streamingMeta = StreamingModel.createStreamingConfig();
+      $scope.kafkaMeta = StreamingModel.createKafkaConfig();
+      $scope.updateStreamingMeta = function(val){
+        $scope.streamingMeta = val;
+      }
+      $scope.updateKafkaMeta = function(val){
+        $scope.kafkaMeta = val;
+      }
+
+      $scope.streamingResultTmpl = function (notification) {
+        // Get the static notification template.
+        var tmpl = notification.type == 'success' ? 'streamingResultSuccess.html' : 'streamingResultError.html';
+        return $interpolate($templateCache.get(tmpl))(notification);
+      };
+
+      $scope.updateStreamingSchema = function(){
+        StreamingService.update({}, {
+          project: $scope.projectName,
+          tableData:angular.toJson(""),
+          streamingConfig: angular.toJson($scope.streamingMeta),
+          kafkaConfig: angular.toJson($scope.kafkaMeta)
+        }, function (request) {
+          if (request.successful) {
+            SweetAlert.swal('', 'Updated the streaming successfully.', 'success');
+            $scope.cancel();
+          } else {
+            var message = request.message;
+            var msg = !!(message) ? message : 'Failed to take action.';
+            MessageService.sendMsg($scope.streamingResultTmpl({
+              'text': msg,
+              'streamingSchema': angular.toJson($scope.streamingMeta,true),
+              'kfkSchema': angular.toJson($scope.kafkaMeta,true)
+            }), 'error', {}, true, 'top_center');
+          }
+          loadingRequest.hide();
+        }, function (e) {
+          if (e.data && e.data.exception) {
+            var message = e.data.exception;
+            var msg = !!(message) ? message : 'Failed to take action.';
+            MessageService.sendMsg($scope.streamingResultTmpl({
+              'text': msg,
+              'streamingSchema': angular.toJson($scope.streamingMeta,true),
+              'kfkSchema': angular.toJson($scope.kafkaMeta,true)
+            }), 'error', {}, true, 'top_center');
+          } else {
+            MessageService.sendMsg($scope.streamingResultTmpl({
+              'text': msg,
+              'streamingSchema': angular.toJson($scope.streamingMeta,true),
+              'kfkSchema': angular.toJson($scope.kafkaMeta,true)
+            }), 'error', {}, true, 'top_center');
+          }
+          //end loading
+          loadingRequest.hide();
+
+        })
+      }
+
+    }
+
     var StreamingSourceCtrl = function ($scope, $location,$interpolate,$templateCache, $modalInstance, tableNames, MessageService, projectName, scope, tableConfig,cubeConfig,StreamingModel,StreamingService) {
 
-      $scope.cubeState={
-        "isStreaming": false
-      }
       $scope.state={
         'mode':'edit'
       }
 
       $scope.streamingMeta = StreamingModel.createStreamingConfig();
       $scope.kafkaMeta = StreamingModel.createKafkaConfig();
+
 
 
       $scope.steps = {
@@ -538,57 +644,77 @@ KylinApp
 
       $scope.streamingOnChange = function () {
         $scope.table.schemaChecked = true;
-        console.log($scope.streaming.sourceSchema);
         try {
           $scope.streaming.parseResult = JSON.parse($scope.streaming.sourceSchema);
         } catch (error) {
           $scope.table.sourceValid = false;
-          console.log(error);
           return;
         }
         $scope.table.sourceValid = true;
-        var columnList = [];
-        for (var key in $scope.streaming.parseResult) {
-          var defaultType="varchar(256)";
-          var _value = $scope.streaming.parseResult[key];
-          var defaultChecked = "Y";
-          if(typeof _value ==="string"){
-            defaultType="varchar(256)";
-          }else if(typeof _value ==="number"){
-            if(_value <= 2147483647){
-              if(_value.toString().indexOf(".")!=-1){
-                defaultType="decimal";
-              }else{
-                defaultType="int";
-              }
-            }else{
-              defaultType="timestamp";
-            }
-          }
-          if(defaultType=="timestamp"){
-            defaultChecked = "N";
-          }
-          columnList.push({
-            'name': key,
-            'checked': defaultChecked,
-            'type': defaultType,
-            'fromSource':'Y'
-          });
 
-          //var
-          columnList = _.sortBy(columnList, function (i) { return i.type; });
+        //streaming table data change structure
+        var columnList=[]
+        function changeObjTree(obj,base){
+          base=base?base+"_":"";
+          for(var i in obj){
+            if(Object.prototype.toString.call(obj[i])=="[object Object]"){
+              changeObjTree(obj[i],base+i);
+              continue;
+            }
+            columnList.push(createNewObj(base+i,obj[i]));
+          }
         }
 
-          var timeMeasure = $scope.cubeConfig.streamingAutoGenerateMeasure;
-          for(var i = 0;i<timeMeasure.length;i++){
-            var defaultCheck = 'Y';
-            columnList.push({
-              'name': timeMeasure[i].name,
-              'checked': defaultCheck,
-              'type': timeMeasure[i].type,
-              'fromSource':'N'
-            });
+        function checkValType(val,key){
+          var defaultType;
+          if(typeof val ==="number"){
+              if(/id/i.test(key)&&val.toString().indexOf(".")==-1){
+                defaultType="int";
+              }else if(val <= 2147483647){
+                if(val.toString().indexOf(".")!=-1){
+                  defaultType="decimal";
+                }else{
+                  defaultType="int";
+                }
+              }else{
+                defaultType="timestamp";
+              }
+          }else if(typeof val ==="string"){
+              if(!isNaN((new Date(val)).getFullYear())&&typeof ((new Date(val)).getFullYear())==="number"){
+                defaultType="date";
+              }else{
+                defaultType="varchar(256)";
+              }
+          }else if(Object.prototype.toString.call(val)=="[object Array]"){
+              defaultType="varchar(256)";
+          }else if (typeof val ==="boolean"){
+              defaultType="boolean";
           }
+          return defaultType;
+        }
+
+        function createNewObj(key,val){
+          var obj={};
+          obj.name=key;
+          obj.type=checkValType(val,key);
+          obj.fromSource="Y";
+          obj.checked="Y";
+          if(Object.prototype.toString.call(val)=="[object Array]"){
+            obj.checked="N";
+          }
+          return obj;
+        }
+        changeObjTree($scope.streaming.parseResult);
+        var timeMeasure = $scope.cubeConfig.streamingAutoGenerateMeasure;
+        for(var i = 0;i<timeMeasure.length;i++){
+          var defaultCheck = 'Y';
+          columnList.push({
+            'name': timeMeasure[i].name,
+            'checked': defaultCheck,
+            'type': timeMeasure[i].type,
+            'fromSource':'N'
+          });
+        }
 
         var firstCommit = false;
         if($scope.columnList.length==0){

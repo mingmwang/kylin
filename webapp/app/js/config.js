@@ -35,65 +35,77 @@ var Config = {
   },
   contact_mail: ''
 };
-
+//resolve startsWith and endsWidth not work in low version chrome
+if (typeof String.prototype.startsWith != 'function') {
+  String.prototype.startsWith = function (prefix){
+    return this.slice(0, prefix.length) === prefix;
+  };
+}
+if (typeof String.prototype.endsWith != 'function') {
+  String.prototype.endsWith = function(suffix) {
+    return this.indexOf(suffix, this.length - suffix.length) !== -1;
+  };
+}
 // Angular module to load routes.
 KylinApp.config(function ($routeProvider, $httpProvider, $locationProvider, $logProvider) {
+    //resolve http always use cache data in IE11,IE10
+    $httpProvider.defaults.headers.common['Cache-Control'] = 'no-cache';
+    $httpProvider.defaults.headers.common['Pragma'] = 'no-cache';
+    // Set debug to true by default.
+    if (angular.isUndefined(Config.debug) || Config.debug !== false) {
+      Config.debug = true;
+    }
 
-  // Set debug to true by default.
-  if (angular.isUndefined(Config.debug) || Config.debug !== false) {
-    Config.debug = true;
-  }
+    // Set development to true by default.
+    if (angular.isUndefined(Config.development) || Config.development !== false) {
+      Config.development = true;
+    }
 
-  // Set development to true by default.
-  if (angular.isUndefined(Config.development) || Config.development !== false) {
-    Config.development = true;
-  }
+    // Disable logging if debug is off.
+    if (Config.debug === false) {
+      $logProvider.debugEnabled(false);
+    }
 
-  // Disable logging if debug is off.
-  if (Config.debug === false) {
-    $logProvider.debugEnabled(false);
-  }
+    // Loop over routes and add to router.
+    angular.forEach(Config.routes, function (route) {
+      $routeProvider.when(route.url, route.params).otherwise({redirectTo: '/'});
+    });
 
-  // Loop over routes and add to router.
-  angular.forEach(Config.routes, function (route) {
-    $routeProvider.when(route.url, route.params).otherwise({redirectTo:'/'});
-  });
+    // Set to use HTML5 mode, which removes the #! from modern browsers.
+    $locationProvider.html5Mode(true);
 
-  // Set to use HTML5 mode, which removes the #! from modern browsers.
-  $locationProvider.html5Mode(true);
+    //configure $http to view a login whenever a 401 unauthorized response arrives
+    $httpProvider.responseInterceptors.push(function ($rootScope, $q) {
+      return function (promise) {
+        return promise.then(
+          //success -> don't intercept
+          function (response) {
+            return response;
+          },
+          //error -> if 401 save the request and broadcast an event
+          function (response) {
+            if (response.status === 401 && !(response.config.url.indexOf("user/authentication") !== -1 && response.config.method === 'POST')) {
+              var deferred = $q.defer(),
+                req = {
+                  config: response.config,
+                  deferred: deferred
+                };
+              $rootScope.requests401.push(req);
+              $rootScope.$broadcast('event:loginRequired');
+              return deferred.promise;
+            }
 
-  //configure $http to view a login whenever a 401 unauthorized response arrives
-  $httpProvider.responseInterceptors.push(function ($rootScope, $q) {
-    return function (promise) {
-      return promise.then(
-        //success -> don't intercept
-        function (response) {
-          return response;
-        },
-        //error -> if 401 save the request and broadcast an event
-        function (response) {
-          if (response.status === 401 && !(response.config.url.indexOf("user/authentication") !== -1 && response.config.method === 'POST')) {
-            var deferred = $q.defer(),
-              req = {
-                config: response.config,
-                deferred: deferred
-              };
-            $rootScope.requests401.push(req);
-            $rootScope.$broadcast('event:loginRequired');
-            return deferred.promise;
+            if (response.status === 403) {
+              $rootScope.$broadcast('event:forbidden', response.data.exception);
+            }
+
+            return $q.reject(response);
           }
-
-          if (response.status === 403) {
-            $rootScope.$broadcast('event:forbidden', response.data.exception);
-          }
-
-          return $q.reject(response);
-        }
-      );
-    };
-  });
-  httpHeaders = $httpProvider.defaults.headers;
-})
+        );
+      };
+    });
+    httpHeaders = $httpProvider.defaults.headers;
+  })
   .run(function ($location) {
 
     if (angular.isUndefined(Config.uri)) {
@@ -116,6 +128,10 @@ KylinApp.config(function ($routeProvider, $httpProvider, $locationProvider, $log
   });
 
 // This runs when all code has loaded, and loads the config and route json manifests, before bootstrapping angular.
+
+
+
+
 window.onload = function () {
 
   // Files to load initially.

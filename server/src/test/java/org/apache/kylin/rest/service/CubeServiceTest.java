@@ -19,16 +19,19 @@
 package org.apache.kylin.rest.service;
 
 import java.net.UnknownHostException;
+import java.sql.SQLException;
 import java.util.List;
 
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.job.exception.JobException;
 import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.query.QueryConnection;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /**
  * @author xduo
@@ -36,24 +39,22 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 public class CubeServiceTest extends ServiceTestBase {
 
     @Autowired
+    @Qualifier("cubeMgmtService")
     CubeService cubeService;
 
     @Autowired
+    @Qualifier("cacheService")
     private CacheService cacheService;
-    
+
     @Test
-    public void testBasics() throws JsonProcessingException, JobException, UnknownHostException {
+    public void testBasics() throws JsonProcessingException, JobException, UnknownHostException, SQLException {
         Assert.assertNotNull(cubeService.getConfig());
         Assert.assertNotNull(cubeService.getConfig());
         Assert.assertNotNull(cubeService.getMetadataManager());
-        Assert.assertNotNull(cacheService.getOLAPDataSource(ProjectInstance.DEFAULT_PROJECT_NAME));
+        Assert.assertNotNull(QueryConnection.getConnection(ProjectInstance.DEFAULT_PROJECT_NAME));
 
-        List<CubeInstance> cubes = cubeService.getCubes(null, null, null, null, null);
+        List<CubeInstance> cubes = cubeService.listAllCubes(null, null, null, true);
         Assert.assertNotNull(cubes);
         CubeInstance cube = cubes.get(0);
-        cubeService.isCubeDescFreeEditable(cube.getDescriptor());
-
-        cubes = cubeService.getCubes(null, null, null, 1, 0);
-        Assert.assertTrue(cubes.size() == 1);
     }
 }

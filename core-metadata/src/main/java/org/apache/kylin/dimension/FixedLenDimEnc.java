@@ -21,6 +21,7 @@ package org.apache.kylin.dimension;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.io.Serializable;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 
@@ -29,7 +30,8 @@ import org.apache.kylin.metadata.datatype.DataTypeSerializer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-public class FixedLenDimEnc extends DimensionEncoding {
+public class FixedLenDimEnc extends DimensionEncoding implements Serializable{
+    private static final long serialVersionUID = 1L;
 
     private static Logger logger = LoggerFactory.getLogger(FixedLenDimEnc.class);
 
@@ -59,15 +61,17 @@ public class FixedLenDimEnc extends DimensionEncoding {
     //no-arg constructor is required for Externalizable
     public FixedLenDimEnc() {
     }
-    
+
     public FixedLenDimEnc(int len) {
         this.fixedLen = len;
     }
 
     @Override
     public boolean equals(Object o) {
-        if (this == o) return true;
-        if (o == null || getClass() != o.getClass()) return false;
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
 
         FixedLenDimEnc that = (FixedLenDimEnc) o;
 
@@ -86,12 +90,14 @@ public class FixedLenDimEnc extends DimensionEncoding {
     }
 
     @Override
-    public void encode(byte[] value, int valueLen, byte[] output, int outputOffset) {
-        if (value == null) {
+    public void encode(String valueStr, byte[] output, int outputOffset) {
+        if (valueStr == null) {
             Arrays.fill(output, outputOffset, outputOffset + fixedLen, NULL);
             return;
         }
 
+        byte[] value = Bytes.toBytes(valueStr);
+        int valueLen = value.length;
         if (valueLen > fixedLen) {
             if (avoidVerbose++ % 10000 == 0) {
                 logger.warn("Expect at most " + fixedLen + " bytes, but got " + valueLen + ", will truncate, value string: " + Bytes.toString(value, 0, valueLen) + " times:" + avoidVerbose);
@@ -124,11 +130,9 @@ public class FixedLenDimEnc extends DimensionEncoding {
     }
 
     public class FixedLenSerializer extends DataTypeSerializer<Object> {
-        // be thread-safe and avoid repeated obj creation
-        private ThreadLocal<byte[]> current = new ThreadLocal<byte[]>();
 
         private byte[] currentBuf() {
-            byte[] buf = current.get();
+            byte[] buf = (byte[]) current.get();
             if (buf == null) {
                 buf = new byte[fixedLen];
                 current.set(buf);
@@ -139,8 +143,8 @@ public class FixedLenDimEnc extends DimensionEncoding {
         @Override
         public void serialize(Object value, ByteBuffer out) {
             byte[] buf = currentBuf();
-            byte[] bytes = value == null ? null : Bytes.toBytes(value.toString());
-            encode(bytes, bytes == null ? 0 : bytes.length, buf, 0);
+            String str = value == null ? null : value.toString();
+            encode(str, buf, 0);
             out.put(buf);
         }
 

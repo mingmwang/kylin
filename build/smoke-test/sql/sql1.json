@@ -1,15 +1,15 @@
 {
-  "cube": "kylin_sales_cube",
+  "cube": "CUBE[name=kylin_sales_cube]",
   "partial": false,
   "affectedRowCount": 0,
   "isException": false,
+  "pushDown": false,
   "results": [
     [
       "10000"
     ]
   ],
   "exceptionMessage": null,
-  "totalScanCount": 1,
   "columnMetas": [
     {
       "scale": 0,

@@ -18,20 +18,27 @@
 -->
 
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
-    <parent>
-        <artifactId>kylin</artifactId>
-        <groupId>org.apache.kylin</groupId>
-        <version>1.5.2-SNAPSHOT</version>
-    </parent>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>kylin-it</artifactId>
-    <name>Kylin:IT</name>
+    <packaging>jar</packaging>
+    <name>Apache Kylin - Integration Test</name>
+    <description>Apache Kylin - Integration Test</description>
+
+    <parent>
+        <artifactId>kylin</artifactId>
+        <groupId>org.apache.kylin</groupId>
+        <version>2.2.0-SNAPSHOT</version>
+    </parent>
 
     <properties>
-        <hdp.version />
-        <fastBuildMode />
+        <hdp.version/>
+        <fastBuildMode/>
+        <buildCubeUsingProvidedData/>
+        <engineType/>
     </properties>
 
     <!-- Dependencies. -->
@@ -39,64 +46,42 @@
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>atopcalcite</artifactId>
-            <version>${project.parent.version}</version>
+            <exclusions>
+                <exclusion>
+                    <artifactId>avatica-core</artifactId>
+                    <groupId>org.apache.calcite.avatica</groupId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-server</artifactId>
-            <version>${project.parent.version}</version>
             <classifier>classes</classifier>
+            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-core-storage</artifactId>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-source-hive</artifactId>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-jdbc</artifactId>
-            <version>${project.parent.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kylin</groupId>
+            <artifactId>kylin-tool</artifactId>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-storage-hbase</artifactId>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-query</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.kylin</groupId>
-            <artifactId>kylin-invertedindex</artifactId>
-            <version>${project.parent.version}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.apache.calcite</groupId>
-            <artifactId>calcite-linq4j</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>log4j</groupId>
-            <artifactId>log4j</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>jcl-over-slf4j</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>commons-cli</groupId>
-            <artifactId>commons-cli</artifactId>
         </dependency>
 
         <!-- Env & Test -->
@@ -106,40 +91,34 @@
             <artifactId>kylin-core-common</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-core-cube</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-core-storage</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-core-job</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-storage-hbase</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.hive.hcatalog</groupId>
             <artifactId>hive-hcatalog-core</artifactId>
-            <version>${hive-hcatalog.version}</version>
             <scope>provided</scope>
         </dependency>
         <dependency>
@@ -147,7 +126,6 @@
             <artifactId>kylin-assembly</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>org.apache.maven</groupId>
@@ -173,11 +151,6 @@
             <groupId>org.dbunit</groupId>
             <artifactId>dbunit</artifactId>
             <scope>test</scope>
-        </dependency>
-        <dependency>
-            <groupId>org.apache.hadoop</groupId>
-            <artifactId>hadoop-common</artifactId>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>org.apache.hadoop</groupId>
@@ -236,6 +209,14 @@
                     <groupId>org.apache.hadoop</groupId>
                     <artifactId>hadoop-mapreduce-client-jobclient</artifactId>
                 </exclusion>
+                <exclusion>
+                    <groupId>tomcat</groupId>
+                    <artifactId>jasper-compiler</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>tomcat</groupId>
+                    <artifactId>jasper-runtime</artifactId>
+                </exclusion>
             </exclusions>
         </dependency>
         <dependency>
@@ -246,7 +227,6 @@
         <dependency>
             <groupId>org.apache.hbase</groupId>
             <artifactId>hbase-testing-util</artifactId>
-            <version>${hbase-hadoop2.version}</version>
             <scope>test</scope>
             <exclusions>
                 <exclusion>
@@ -256,6 +236,72 @@
                 <exclusion>
                     <groupId>javax.servlet.jsp</groupId>
                     <artifactId>jsp-api</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>tomcat</groupId>
+                    <artifactId>jasper-compiler</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>tomcat</groupId>
+                    <artifactId>jasper-runtime</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.kafka</groupId>
+            <artifactId>kafka_2.11</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- log dependency -->
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+
+        <!-- Spark dependency -->
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_2.11</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.thrift</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_2.11</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.thrift</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-hive_2.11</artifactId>
+            <version>${spark.version}</version>
+            <scope>provided</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.thrift</groupId>
+                    <artifactId>*</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -273,13 +319,16 @@
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-failsafe-plugin</artifactId>
-                        <version>2.16</version>
                         <executions>
                             <execution>
                                 <id>integration-tests</id>
-                                <phase>integration-test</phase>
                                 <goals>
                                     <goal>integration-test</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>verify</id>
+                                <goals>
                                     <goal>verify</goal>
                                 </goals>
                             </execution>
@@ -290,17 +339,20 @@
                             </excludes>
                             <systemProperties>
                                 <property>
-                                    <name>useSandbox</name>
-                                    <value>true</value>
+                                    <name>log4j.configuration</name>
+                                    <value>
+                                        file:${project.basedir}/..//build/conf/kylin-tools-log4j.properties
+                                    </value>
                                 </property>
                             </systemProperties>
-                            <argLine>-Xms1G -Xmx2G -XX:PermSize=128M -XX:MaxPermSize=512M</argLine>
+                            <argLine>-Xms1G -Xmx2G -XX:PermSize=128M -XX:MaxPermSize=512M
+                                -Dkylin.server.cluster-servers=localhost:7070
+                            </argLine>
                         </configuration>
                     </plugin>
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
-                        <version>1.4.0</version>
                         <executions>
                             <execution>
                                 <id>build_cube_with_engine</id>
@@ -313,12 +365,19 @@
                                     <classpathScope>test</classpathScope>
                                     <executable>java</executable>
                                     <arguments>
-                                        <argument>-DuseSandbox=true</argument>
                                         <argument>-Dhdp.version=${hdp.version}</argument>
                                         <argument>-DfastBuildMode=${fastBuildMode}</argument>
+                                        <argument>
+                                            -DbuildCubeUsingProvidedData=${buildCubeUsingProvidedData}
+                                        </argument>
+                                        <argument>-DengineType=${engineType}</argument>
+                                        <argument>
+                                            -Dlog4j.configuration=file:${project.basedir}/..//build/conf/kylin-tools-log4j.properties
+                                        </argument>
                                         <argument>-classpath</argument>
-                                        <classpath />
-                                        <argument>org.apache.kylin.provision.BuildCubeWithEngine</argument>
+                                        <classpath/>
+                                        <argument>org.apache.kylin.provision.BuildCubeWithEngine
+                                        </argument>
                                     </arguments>
                                     <workingDirectory>${project.basedir}</workingDirectory>
                                 </configuration>
@@ -334,33 +393,18 @@
                                     <classpathScope>test</classpathScope>
                                     <executable>java</executable>
                                     <arguments>
-                                        <argument>-DuseSandbox=true</argument>
                                         <argument>-Dhdp.version=${hdp.version}</argument>
                                         <argument>-DfastBuildMode=${fastBuildMode}</argument>
+                                        <argument>
+                                            -DbuildCubeUsingProvidedData=${buildCubeUsingProvidedData}
+                                        </argument>
+                                        <argument>
+                                            -Dlog4j.configuration=file:${project.basedir}/..//build/conf/kylin-tools-log4j.properties
+                                        </argument>
                                         <argument>-classpath</argument>
-                                        <classpath />
-                                        <argument>org.apache.kylin.provision.BuildCubeWithStream</argument>
-                                    </arguments>
-                                    <workingDirectory>${project.basedir}</workingDirectory>
-                                </configuration>
-                            </execution>
-                            <execution>
-                                <id>build_ii_with_stream</id>
-                                <goals>
-                                    <goal>exec</goal>
-                                </goals>
-                                <phase>pre-integration-test</phase>
-                                <configuration>
-                                    <skip>${skipTests}</skip>
-                                    <classpathScope>test</classpathScope>
-                                    <executable>java</executable>
-                                    <arguments>
-                                        <argument>-DuseSandbox=true</argument>
-                                        <argument>-Dhdp.version=${hdp.version}</argument>
-                                        <argument>-DfastBuildMode=${fastBuildMode}</argument>
-                                        <argument>-classpath</argument>
-                                        <classpath />
-                                        <argument>org.apache.kylin.provision.BuildIIWithStream</argument>
+                                        <classpath/>
+                                        <argument>org.apache.kylin.provision.BuildCubeWithStream
+                                        </argument>
                                     </arguments>
                                     <workingDirectory>${project.basedir}</workingDirectory>
                                 </configuration>
@@ -368,71 +412,6 @@
                         </executions>
                     </plugin>
 
-                </plugins>
-            </build>
-        </profile>
-        <profile>
-            <!-- This profile adds/overrides few features of the 'apache-release'
-                 profile in the parent pom. -->
-            <id>apache-release</id>
-            <build>
-                <plugins>
-                    <!-- Apache-RAT checks for files without headers.
-                         If run on a messy developer's sandbox, it will fail.
-                         This serves as a reminder to only build a release in a clean
-                         sandbox! -->
-                    <plugin>
-                        <groupId>org.apache.rat</groupId>
-                        <artifactId>apache-rat-plugin</artifactId>
-                        <configuration>
-                            <numUnapprovedLicenses>0</numUnapprovedLicenses>
-                            <excludes>
-                                <!-- test data -->
-                                <exclude>src/test/**/*.dat</exclude>
-                                <exclude>src/test/**/*.expected</exclude>
-                            </excludes>
-                        </configuration>
-                        <executions>
-                            <execution>
-                                <phase>verify</phase>
-                                <goals>
-                                    <goal>check</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <dependencies>
-                            <dependency>
-                                <groupId>org.apache.maven.doxia</groupId>
-                                <artifactId>doxia-core</artifactId>
-                                <version>1.6</version>
-                                <exclusions>
-                                    <exclusion>
-                                        <groupId>xerces</groupId>
-                                        <artifactId>xercesImpl</artifactId>
-                                    </exclusion>
-                                </exclusions>
-                            </dependency>
-                        </dependencies>
-                    </plugin>
-                    <plugin>
-                        <groupId>net.ju-n.maven.plugins</groupId>
-                        <artifactId>checksum-maven-plugin</artifactId>
-                        <version>1.2</version>
-                        <executions>
-                            <execution>
-                                <goals>
-                                    <goal>artifacts</goal>
-                                </goals>
-                            </execution>
-                        </executions>
-                        <configuration>
-                            <algorithms>
-                                <algorithm>MD5</algorithm>
-                                <algorithm>SHA-1</algorithm>
-                            </algorithms>
-                            <failOnError>false</failOnError>
-                        </configuration>
-                    </plugin>
                 </plugins>
             </build>
         </profile>

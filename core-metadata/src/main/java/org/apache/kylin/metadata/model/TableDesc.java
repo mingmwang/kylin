@@ -23,10 +23,12 @@ import java.util.Comparator;
 
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.common.util.Pair;
 import org.apache.kylin.common.util.StringSplitter;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
@@ -36,7 +38,9 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 @JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
 public class TableDesc extends RootPersistentEntity implements ISourceAware {
 
-    public static final String TABLE_TYPE_VIRTUAL_VIEW = "VIRTUAL_VIEW";
+    private static final String TABLE_TYPE_VIRTUAL_VIEW = "VIRTUAL_VIEW";
+    private static final String materializedTableNamePrefix = "kylin_intermediate_";
+
     @JsonProperty("name")
     private String name;
     @JsonProperty("columns")
@@ -46,20 +50,62 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
     @JsonProperty("table_type")
     private String tableType;
 
-    private static final String materializedTableNamePrefix = "kylin_intermediate_";
+    @JsonProperty("data_gen")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String dataGen;
 
+    private String project;
     private DatabaseDesc database = new DatabaseDesc();
-
     private String identity = null;
 
     public TableDesc() {
     }
 
     public TableDesc(TableDesc other) {
-        this.name = other.getName();
-        this.columns = other.getColumns();
+        this.uuid = other.uuid;
+        this.lastModified = other.lastModified;
+
+        this.name = other.name;
+        this.sourceType = other.sourceType;
+        this.tableType = other.tableType;
+        this.dataGen = other.dataGen;
+
+        this.columns = new ColumnDesc[other.columns.length];
+        for (int i = 0; i < other.columns.length; i++) {
+            this.columns[i] = new ColumnDesc(other.columns[i]);
+            this.columns[i].init(this);
+        }
+
+        this.project = other.project;
         this.database.setName(other.getDatabase());
-        this.tableType = other.getTableType();
+        this.identity = other.identity;
+    }
+
+    public TableDesc appendColumns(ColumnDesc[] computedColumns) {
+        if (computedColumns == null || computedColumns.length == 0) {
+            return this;
+        }
+
+        TableDesc ret = new TableDesc(this);//deep copy of the table desc
+        ColumnDesc[] origin = ret.columns;
+        ret.columns = new ColumnDesc[computedColumns.length + origin.length];
+        for (int i = 0; i < origin.length; i++) {
+            ret.columns[i] = origin[i];
+
+            //check name conflict
+            for (int j = 0; j < computedColumns.length; j++) {
+                if (origin[i].getName().equalsIgnoreCase(computedColumns[j].getName())) {
+                    throw new IllegalArgumentException(String.format(
+                            "There is already a column named %s on table %s, please change your computed column name",
+                            new Object[] { computedColumns[j].getName(), this.getIdentity() }));
+                }
+            }
+        }
+        for (int i = 0; i < computedColumns.length; i++) {
+            computedColumns[i].init(ret);
+            ret.columns[i + this.columns.length] = computedColumns[i];
+        }
+        return ret;
     }
 
     public ColumnDesc findColumnByName(String name) {
@@ -79,7 +125,7 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
     }
 
     public String getResourcePath() {
-        return concatResourcePath(getIdentity());
+        return concatResourcePath(getIdentity(), project);
     }
 
     /**
@@ -87,7 +133,7 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
      * @return
      */
     public String getResourcePathV1() {
-        return concatResourcePath(name);
+        return concatResourcePath(name, null);
     }
 
     public String getIdentity() {
@@ -97,15 +143,47 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
         return identity;
     }
 
-    public static String concatResourcePath(String tableIdentity) {
-        return ResourceStore.TABLE_RESOURCE_ROOT + "/" + tableIdentity + ".json";
+    public boolean isView() {
+        return TABLE_TYPE_VIRTUAL_VIEW.equals(tableType);
     }
 
-    public static String concatExdResourcePath(String tableIdentity) {
-        return ResourceStore.TABLE_EXD_RESOURCE_ROOT + "/" + tableIdentity + ".json";
+    public static String concatRawResourcePath(String nameOnPath) {
+        return ResourceStore.TABLE_RESOURCE_ROOT + "/" + nameOnPath + ".json";
+    }
+
+    public static String concatResourcePath(String tableIdentity, String prj) {
+        if (prj == null || prj.isEmpty())
+            return ResourceStore.TABLE_RESOURCE_ROOT + "/" + tableIdentity + ".json";
+        else
+            return ResourceStore.TABLE_RESOURCE_ROOT + "/" + tableIdentity + "--" + prj + ".json";
+    }
+
+    // returns <table, project>
+    public static Pair<String, String> parseResourcePath(String path) {
+        if (path.endsWith(".json"))
+            path = path.substring(0, path.length() - ".json".length());
+
+        int cut = path.lastIndexOf("/");
+        if (cut >= 0)
+            path = path.substring(cut + 1);
+
+        String table, prj;
+        int dash = path.indexOf("--");
+        if (dash >= 0) {
+            table = path.substring(0, dash);
+            prj = path.substring(dash + 2);
+        } else {
+            table = path;
+            prj = null;
+        }
+        return Pair.newPair(table, prj);
     }
 
     // ============================================================================
+
+    public String getProject() {
+        return project;
+    }
 
     public String getName() {
         return this.name;
@@ -121,7 +199,7 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
                 this.name = splits[0];
             }
         } else {
-            this.name = name;
+            this.name = null;
         }
     }
 
@@ -144,7 +222,12 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
     }
 
     public int getMaxColumnIndex() {
+        if (columns == null) {
+            return -1;
+        }
+
         int max = -1;
+
         for (ColumnDesc col : columns) {
             int idx = col.getZeroBasedIndex();
             max = Math.max(max, idx);
@@ -156,7 +239,13 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
         return getMaxColumnIndex() + 1;
     }
 
-    public void init() {
+    public String getDataGen() {
+        return dataGen;
+    }
+
+    public void init(String project) {
+        this.project = project;
+
         if (name != null)
             name = name.toUpperCase();
 
@@ -178,22 +267,42 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
             }
         }
     }
-    
+
     @Override
     public int hashCode() {
         return getIdentity().hashCode();
     }
 
+    //    @Override
+    //    public boolean equals(Object obj) {
+    //        if (this == obj)
+    //            return true;
+    //        if (!super.equals(obj))
+    //            return false;
+    //        if (getClass() != obj.getClass())
+    //            return false;
+    //        TableDesc other = (TableDesc) obj;
+    //        return getIdentity().equals(other.getIdentity());
+    //    }
+
     @Override
-    public boolean equals(Object obj) {
-        if (this == obj)
+    public boolean equals(Object o) {
+        if (this == o)
             return true;
-        if (!super.equals(obj))
+        if (o == null || getClass() != o.getClass())
             return false;
-        if (getClass() != obj.getClass())
+
+        TableDesc tableDesc = (TableDesc) o;
+
+        if (sourceType != tableDesc.sourceType)
             return false;
-        TableDesc other = (TableDesc) obj;
-        return getIdentity().equals(other.getIdentity());
+        if (name != null ? !name.equals(tableDesc.name) : tableDesc.name != null)
+            return false;
+        if (!Arrays.equals(columns, tableDesc.columns))
+            return false;
+
+        return getIdentity().equals(tableDesc.getIdentity());
+
     }
 
     public String getMaterializedName() {
@@ -202,7 +311,9 @@ public class TableDesc extends RootPersistentEntity implements ISourceAware {
 
     @Override
     public String toString() {
-        return "TableDesc [database=" + getDatabase() + " name=" + name + "]";
+        return "TableDesc{" + "name='" + name + '\'' + ", columns=" + Arrays.toString(columns) + ", sourceType="
+                + sourceType + ", tableType='" + tableType + '\'' + ", database=" + database + ", identity='"
+                + getIdentity() + '\'' + '}';
     }
 
     /** create a mockup table for unit test */

@@ -20,6 +20,7 @@ package org.apache.kylin.engine.mr.steps;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -30,25 +31,26 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.common.util.MemoryBudgetController;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.inmemcubing.DoggedCubeBuilder;
 import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.engine.EngineFactory;
 import org.apache.kylin.engine.mr.ByteArrayWritable;
 import org.apache.kylin.engine.mr.IMRInput.IMRTableInputFormat;
 import org.apache.kylin.engine.mr.KylinMapper;
 import org.apache.kylin.engine.mr.MRUtil;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
 import org.apache.kylin.engine.mr.common.BatchConstants;
-import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Maps;
 
@@ -56,18 +58,18 @@ import com.google.common.collect.Maps;
  */
 public class InMemCuboidMapper<KEYIN> extends KylinMapper<KEYIN, Object, ByteArrayWritable, ByteArrayWritable> {
 
-    private static final Log logger = LogFactory.getLog(InMemCuboidMapper.class);
+    private static final Logger logger = LoggerFactory.getLogger(InMemCuboidMapper.class);
+
     private CubeInstance cube;
     private CubeDesc cubeDesc;
     private CubeSegment cubeSegment;
     private IMRTableInputFormat flatTableInputFormat;
 
-    private int counter;
     private BlockingQueue<List<String>> queue = new ArrayBlockingQueue<List<String>>(64);
     private Future<?> future;
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
 
         Configuration conf = context.getConfiguration();
@@ -76,14 +78,15 @@ public class InMemCuboidMapper<KEYIN> extends KylinMapper<KEYIN, Object, ByteArr
         String cubeName = conf.get(BatchConstants.CFG_CUBE_NAME);
         cube = CubeManager.getInstance(config).getCube(cubeName);
         cubeDesc = cube.getDescriptor();
-        String segmentName = context.getConfiguration().get(BatchConstants.CFG_CUBE_SEGMENT_NAME);
-        cubeSegment = cube.getSegment(segmentName, SegmentStatusEnum.NEW);
+        String segmentID = context.getConfiguration().get(BatchConstants.CFG_CUBE_SEGMENT_ID);
+        cubeSegment = cube.getSegmentById(segmentID);
         flatTableInputFormat = MRUtil.getBatchCubingInputSide(cubeSegment).getFlatTableInputFormat();
+        IJoinedFlatTableDesc flatDesc = EngineFactory.getJoinedFlatTableDesc(cubeSegment);
 
         Map<TblColRef, Dictionary<String>> dictionaryMap = Maps.newHashMap();
 
         // dictionary
-        for (TblColRef col : cubeDesc.getAllColumnsNeedDictionary()) {
+        for (TblColRef col : cubeDesc.getAllColumnsHaveDictionary()) {
             Dictionary<?> dict = cubeSegment.getDictionary(col);
             if (dict == null) {
                 logger.warn("Dictionary for " + col + " was not found.");
@@ -92,8 +95,11 @@ public class InMemCuboidMapper<KEYIN> extends KylinMapper<KEYIN, Object, ByteArr
             dictionaryMap.put(col, cubeSegment.getDictionary(col));
         }
 
-        DoggedCubeBuilder cubeBuilder = new DoggedCubeBuilder(cube.getDescriptor(), dictionaryMap);
+        int taskCount = config.getCubeAlgorithmInMemConcurrentThreads();
+        DoggedCubeBuilder cubeBuilder = new DoggedCubeBuilder(cubeSegment.getCuboidScheduler(), flatDesc,
+                dictionaryMap);
         cubeBuilder.setReserveMemoryMB(calculateReserveMB(context.getConfiguration()));
+        cubeBuilder.setConcurrentThreads(taskCount);
 
         ExecutorService executorService = Executors.newSingleThreadExecutor();
         future = executorService.submit(cubeBuilder.buildAsRunnable(queue, new MapContextGTRecordWriter(context, cubeDesc, cubeSegment)));
@@ -110,25 +116,23 @@ public class InMemCuboidMapper<KEYIN> extends KylinMapper<KEYIN, Object, ByteArr
     }
 
     @Override
-    public void map(KEYIN key, Object record, Context context) throws IOException, InterruptedException {
+    public void doMap(KEYIN key, Object record, Context context) throws IOException, InterruptedException {
         // put each row to the queue
-        String[] row = flatTableInputFormat.parseMapperInput(record);
-        List<String> rowAsList = Arrays.asList(row);
+        Collection<String[]> rowCollection = flatTableInputFormat.parseMapperInput(record);
 
-        while (!future.isDone()) {
-            if (queue.offer(rowAsList, 1, TimeUnit.SECONDS)) {
-                counter++;
-                if (counter % BatchConstants.NORMAL_RECORD_LOG_THRESHOLD == 0) {
-                    logger.info("Handled " + counter + " records!");
+        for(String[] row: rowCollection) {
+            List<String> rowAsList = Arrays.asList(row);
+            while (!future.isDone()) {
+                if (queue.offer(rowAsList, 1, TimeUnit.SECONDS)) {
+                    break;
                 }
-                break;
             }
         }
     }
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
-        logger.info("Totally handled " + counter + " records!");
+    protected void doCleanup(Context context) throws IOException, InterruptedException {
+        logger.info("Totally handled " + mapCounter + " records!");
 
         while (!future.isDone()) {
             if (queue.offer(Collections.<String> emptyList(), 1, TimeUnit.SECONDS)) {

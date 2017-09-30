@@ -18,13 +18,16 @@
 
 package org.apache.kylin.metadata.realization;
 
-import java.util.Collection;
+import java.util.List;
+import java.util.Set;
 
 import org.apache.kylin.metadata.filter.TupleFilter;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.JoinDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
+
+import com.google.common.collect.ImmutableList;
 
 /**
  */
@@ -34,35 +37,88 @@ public class SQLDigest {
         ASCENDING, DESCENDING
     }
 
-    public String factTable;
-    public TupleFilter filter;
-    public Collection<JoinDesc> joinDescs;
-    public Collection<TblColRef> allColumns;
-    public Collection<TblColRef> groupbyColumns;
-    public Collection<TblColRef> filterColumns;
-    public Collection<TblColRef> metricColumns;
-    public Collection<FunctionDesc> aggregations;
-    public Collection<MeasureDesc> sortMeasures;
-    public Collection<OrderEnum> sortOrders;
-    private boolean isRawQuery = false;
+    public static class SQLCall {
+        public final String function;
+        public final List<Object> args;
 
-    public SQLDigest(String factTable, TupleFilter filter, Collection<JoinDesc> joinDescs, Collection<TblColRef> allColumns, //
-            Collection<TblColRef> groupbyColumns, Collection<TblColRef> filterColumns, Collection<TblColRef> aggregatedColumns, Collection<FunctionDesc> aggregateFunnc, Collection<MeasureDesc> sortMeasures, Collection<OrderEnum> sortOrders) {
-        this.factTable = factTable;
-        this.filter = filter;
-        this.joinDescs = joinDescs;
-        this.allColumns = allColumns;
-        this.groupbyColumns = groupbyColumns;
-        this.filterColumns = filterColumns;
-        this.metricColumns = aggregatedColumns;
-        this.aggregations = aggregateFunnc;
-        this.sortMeasures = sortMeasures;
-        this.sortOrders = sortOrders;
-        this.isRawQuery = this.groupbyColumns.isEmpty() && this.metricColumns.isEmpty();
+        public SQLCall(String function, Iterable<Object> args) {
+            this.function = function;
+            this.args = ImmutableList.copyOf(args);
+        }
     }
 
-    public boolean isRawQuery() {
-        return isRawQuery;
+    // model
+    public String factTable;
+    public Set<TblColRef> allColumns;
+    public List<JoinDesc> joinDescs;
+
+    // group by
+    public List<TblColRef> groupbyColumns;
+    public Set<TblColRef> subqueryJoinParticipants;
+
+    // aggregation
+    public Set<TblColRef> metricColumns;
+    public List<FunctionDesc> aggregations; // storage level measure type, on top of which various sql aggr function may apply
+    public List<SQLCall> aggrSqlCalls; // sql level aggregation function call
+
+    // filter
+    public Set<TblColRef> filterColumns;
+    public TupleFilter filter;
+    public TupleFilter havingFilter;
+
+    // sort & limit
+    public List<TblColRef> sortColumns;
+    public List<OrderEnum> sortOrders;
+    public boolean isRawQuery;
+    public boolean limitPrecedesAggr;
+
+    public Set<MeasureDesc> involvedMeasure;
+
+    public SQLDigest(String factTable, Set<TblColRef> allColumns, List<JoinDesc> joinDescs, // model
+            List<TblColRef> groupbyColumns, Set<TblColRef> subqueryJoinParticipants, // group by
+            Set<TblColRef> metricColumns, List<FunctionDesc> aggregations, List<SQLCall> aggrSqlCalls, // aggregation
+            Set<TblColRef> filterColumns, TupleFilter filter, TupleFilter havingFilter, // filter
+            List<TblColRef> sortColumns, List<OrderEnum> sortOrders, boolean limitPrecedesAggr, // sort & limit
+            Set<MeasureDesc> involvedMeasure
+    ) {
+        this.factTable = factTable;
+        this.allColumns = allColumns;
+        this.joinDescs = joinDescs;
+
+        this.groupbyColumns = groupbyColumns;
+        this.subqueryJoinParticipants = subqueryJoinParticipants;
+
+        this.metricColumns = metricColumns;
+        this.aggregations = aggregations;
+        this.aggrSqlCalls = aggrSqlCalls;
+
+        this.filterColumns = filterColumns;
+        this.filter = filter;
+        this.havingFilter = havingFilter;
+
+        this.sortColumns = sortColumns;
+        this.sortOrders = sortOrders;
+        this.isRawQuery = isRawQuery();
+        this.limitPrecedesAggr = limitPrecedesAggr;
+
+        this.involvedMeasure = involvedMeasure;
+
+        this.includeSubqueryJoinParticipants();
+    }
+
+    private boolean isRawQuery() {
+        return this.groupbyColumns.isEmpty() && // select a group by a -> not raw
+                this.aggregations.isEmpty(); // has aggr -> not raw
+        //the reason to choose aggregations rather than metricColumns is because the former is set earlier at implOLAP
+    }
+
+    public void includeSubqueryJoinParticipants() {
+        if (this.isRawQuery) {
+            this.allColumns.addAll(this.subqueryJoinParticipants);
+        } else {
+            this.groupbyColumns.addAll(this.subqueryJoinParticipants);
+            this.allColumns.addAll(this.subqueryJoinParticipants);
+        }
     }
 
     @Override

@@ -21,11 +21,10 @@ package org.apache.kylin.storage.hbase.common.coprocessor;
 import java.util.Collection;
 import java.util.Set;
 
-import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.cube.kv.RowKeyColumnIO;
+import org.apache.kylin.dict.BuiltInFunctionTransformer;
 import org.apache.kylin.dict.DictCodeSystem;
-import org.apache.kylin.dict.BuildInFunctionTransformer;
-import org.apache.kylin.dimension.Dictionary;
 import org.apache.kylin.dimension.DimensionEncoding;
 import org.apache.kylin.dimension.IDimensionEncodingMap;
 import org.apache.kylin.metadata.filter.ColumnTupleFilter;
@@ -91,6 +90,20 @@ public class FilterDecorator implements TupleFilterSerializer.Decorator {
                 result = newCompareFilter;
             }
             break;
+        case NOTIN:
+            Set<String> notInValues = Sets.newHashSet();
+            for (String value : constValues) {
+                v = translate(col, value, 0);
+                if (!isDictNull(v))
+                    notInValues.add(v);
+            }
+            if (notInValues.isEmpty()) {
+                result = ConstantTupleFilter.TRUE;
+            } else {
+                newCompareFilter.addChild(new ConstantTupleFilter(notInValues));
+                result = newCompareFilter;
+            }
+            break;
         case NEQ:
             v = translate(col, firstValue, 0);
             if (isDictNull(v)) {
@@ -151,7 +164,7 @@ public class FilterDecorator implements TupleFilterSerializer.Decorator {
         if (filter == null)
             return null;
 
-        BuildInFunctionTransformer translator = new BuildInFunctionTransformer(dimEncMap);
+        BuiltInFunctionTransformer translator = new BuiltInFunctionTransformer(dimEncMap);
         filter = translator.transform(filter);
 
         // un-evaluatable filter is replaced with TRUE
@@ -200,9 +213,8 @@ public class FilterDecorator implements TupleFilterSerializer.Decorator {
     }
 
     private String translate(TblColRef column, String v, int roundingFlag) {
-        byte[] value = Bytes.toBytes(v);
         byte[] id = new byte[dimEncMap.get(column).getLengthOfEncoding()];
-        columnIO.writeColumn(column, value, value.length, roundingFlag, DimensionEncoding.NULL, id, 0);
+        columnIO.writeColumn(column, v, roundingFlag, DimensionEncoding.NULL, id, 0);
         return Dictionary.dictIdToString(id, 0, id.length);
     }
 }

@@ -18,7 +18,7 @@
 
 package org.apache.kylin.query.aggregate;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.measure.dim.DimCountDistinctAggFunc;
@@ -66,7 +66,7 @@ public class DimCountDistinctAggFuncTest extends LocalFileMetadataTestCase {
 
     @Test
     public void testThreshold() {
-        System.setProperty("kylin.query.dim.distinct.max", "100");
+        System.setProperty("kylin.query.max-dimension-count-distinct", "100");
 
         DimCountDistinctAggFunc.DimDistinctCounter counter = DimCountDistinctAggFunc.init();
 
@@ -77,6 +77,6 @@ public class DimCountDistinctAggFuncTest extends LocalFileMetadataTestCase {
             counter = DimCountDistinctAggFunc.add(counter, i);
         }
 
-        System.clearProperty("kylin.query.dim.distinct.max");
+        System.clearProperty("kylin.query.max-dimension-count-distinct");
     }
 }

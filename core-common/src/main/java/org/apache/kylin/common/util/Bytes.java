@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -14,7 +14,8 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- */
+*/
+
 package org.apache.kylin.common.util;
 
 import static com.google.common.base.Preconditions.checkArgument;
@@ -327,7 +328,7 @@ public class Bytes {
                     continue;
                 }
                 // turn hex ASCII digit -> number
-                byte d = (byte) ((toBinaryFromHex((byte) hd1) << 4) + toBinaryFromHex((byte) hd2));
+                byte d = (byte) ((toBinaryFromHex((byte) hd1) << 4) + (toBinaryFromHex((byte) hd2)) & 0xff);
 
                 b[size++] = d;
                 i += 3; // skip 3
@@ -1117,8 +1118,8 @@ public class Bytes {
                 }
                 final int minLength = Math.min(length1, length2);
                 final int minWords = minLength / SIZEOF_LONG;
-                final long offset1Adj = offset1 + BYTE_ARRAY_BASE_OFFSET;
-                final long offset2Adj = offset2 + BYTE_ARRAY_BASE_OFFSET;
+                final long offset1Adj = offset1 + (long)BYTE_ARRAY_BASE_OFFSET;
+                final long offset2Adj = offset2 + (long)BYTE_ARRAY_BASE_OFFSET;
 
                 /*
                  * Compare 8 bytes at a time. Benchmarking shows comparing 8 bytes at a
@@ -1454,7 +1455,7 @@ public class Bytes {
         if (inclusive) {
             diffBI = diffBI.add(BigInteger.ONE);
         }
-        final BigInteger splitsBI = BigInteger.valueOf(num + 1);
+        final BigInteger splitsBI = BigInteger.valueOf(num + 1L);
         if (diffBI.compareTo(splitsBI) < 0) {
             return null;
         }
@@ -1941,7 +1942,7 @@ public class Bytes {
         hex = hex.toUpperCase();
         byte[] b = new byte[hex.length() / 2];
         for (int i = 0; i < b.length; i++) {
-            b[i] = (byte) ((toBinaryFromHex((byte) hex.charAt(2 * i)) << 4) + toBinaryFromHex((byte) hex.charAt((2 * i + 1))));
+            b[i] = (byte) ((toBinaryFromHex((byte) hex.charAt(2 * i)) << 4) + (toBinaryFromHex((byte) hex.charAt((2 * i + 1))) & 0xff));
         }
         return b;
     }

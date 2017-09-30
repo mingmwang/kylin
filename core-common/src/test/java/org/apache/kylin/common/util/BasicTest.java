@@ -24,6 +24,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.ExecutionException;
@@ -33,6 +34,7 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import org.apache.commons.lang3.time.FastDateFormat;
 import org.junit.Ignore;
 import org.junit.Test;
 import org.slf4j.LoggerFactory;
@@ -79,6 +81,12 @@ public class BasicTest {
 
     @Test
     public void testxx() throws InterruptedException {
+        System.out.println(
+                "((?<![\\p{L}_0-9\\.\\\"])(\\\"[\\p{L}_0-9]+\\\"\\.)?(\\\"[\\p{L}_0-9]+\\\")(?![\\p{L}_0-9\\.\\\"]))");
+        System.out.println(0x8fL);
+        byte[] space = new byte[100];
+        ByteBuffer buffer = ByteBuffer.wrap(space, 10, 20);
+        buffer.put((byte) 1);
     }
 
     @Test
@@ -184,8 +192,10 @@ public class BasicTest {
         System.out.println(time(c.getTimeInMillis()));
 
         a.setTimeInMillis(current);
-        b.set(a.get(Calendar.YEAR), a.get(Calendar.MONTH), a.get(Calendar.DAY_OF_MONTH), a.get(Calendar.HOUR_OF_DAY), a.get(Calendar.MINUTE));
-        c.set(a.get(Calendar.YEAR), a.get(Calendar.MONTH), a.get(Calendar.DAY_OF_MONTH), a.get(Calendar.HOUR_OF_DAY), 0);
+        b.set(a.get(Calendar.YEAR), a.get(Calendar.MONTH), a.get(Calendar.DAY_OF_MONTH), a.get(Calendar.HOUR_OF_DAY),
+                a.get(Calendar.MINUTE));
+        c.set(a.get(Calendar.YEAR), a.get(Calendar.MONTH), a.get(Calendar.DAY_OF_MONTH), a.get(Calendar.HOUR_OF_DAY),
+                0);
 
         System.out.println(time(b.getTimeInMillis()));
         System.out.println(time(c.getTimeInMillis()));
@@ -200,6 +210,17 @@ public class BasicTest {
         for (String y : x) {
             System.out.println(y);
         }
+    }
+
+    @Test
+    @Ignore("for dev only")
+    public void test3() throws Exception {
+        FastDateFormat formatter = org.apache.kylin.common.util.DateFormat.getDateFormat("MMM dd, yyyy hh:mm:ss aa");
+        System.out.println(formatter.format(new Date()));
+
+        String timeStr = "Jul 20, 2016 9:59:17 AM";
+
+        System.out.println(formatter.parse(timeStr).getTime());
     }
 
     private static String time(long t) {

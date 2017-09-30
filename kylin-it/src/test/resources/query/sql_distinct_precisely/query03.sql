@@ -17,7 +17,9 @@
 --
 
 select test_cal_dt.week_beg_dt,sum(test_kylin_fact.price) as GMV
- , count(1) as TRANS_CNT, count(distinct test_kylin_fact.leaf_categ_id) as LEAF_CATEG_CNT
+ , count(1) as TRANS_CNT
+ , count(distinct TEST_COUNT_DISTINCT_BITMAP) as user_count
+ , count(distinct site_name) as site_count
  from test_kylin_fact
  inner JOIN edw.test_cal_dt as test_cal_dt
  ON test_kylin_fact.cal_dt = test_cal_dt.cal_dt

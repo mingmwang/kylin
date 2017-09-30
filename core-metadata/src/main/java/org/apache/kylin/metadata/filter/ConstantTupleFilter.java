@@ -21,12 +21,11 @@ package org.apache.kylin.metadata.filter;
 import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.TreeSet;
 
-import com.google.common.collect.Lists;
-import org.apache.commons.collections.comparators.NullComparator;
 import org.apache.kylin.common.util.BytesUtil;
 import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
+
+import com.google.common.collect.Lists;
 
 /**
  * 
@@ -109,4 +108,18 @@ public class ConstantTupleFilter extends TupleFilter {
         }
     }
 
+    @Override public boolean equals(Object o) {
+        if (this == o)
+            return true;
+        if (o == null || getClass() != o.getClass())
+            return false;
+
+        ConstantTupleFilter that = (ConstantTupleFilter) o;
+
+        return constantValues.equals(that.constantValues);
+    }
+
+    @Override public int hashCode() {
+        return constantValues.hashCode();
+    }
 }

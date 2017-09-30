@@ -21,7 +21,7 @@ package org.apache.kylin.measure.basic;
 import java.math.BigDecimal;
 import java.util.Map;
 
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.measure.MeasureIngester;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
@@ -32,8 +32,8 @@ public class BigDecimalIngester extends MeasureIngester<BigDecimal> {
     public BigDecimal valueOf(String[] values, MeasureDesc measureDesc, Map<TblColRef, Dictionary<String>> dictionaryMap) {
         if (values.length > 1)
             throw new IllegalArgumentException();
-        
-        if (values[0] == null)
+
+        if (values[0] == null || values[0].length() == 0)
             return new BigDecimal(0);
         else
             return new BigDecimal(values[0]);

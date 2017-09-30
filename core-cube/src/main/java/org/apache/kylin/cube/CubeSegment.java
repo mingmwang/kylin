@@ -18,8 +18,10 @@
 
 package org.apache.kylin.cube;
 
+import java.io.Serializable;
 import java.text.SimpleDateFormat;
 import java.util.Collection;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -28,27 +30,34 @@ import java.util.concurrent.ConcurrentHashMap;
 
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.common.util.ShardingHash;
+import org.apache.kylin.cube.cuboid.CuboidScheduler;
 import org.apache.kylin.cube.kv.CubeDimEncMap;
 import org.apache.kylin.cube.kv.RowConstants;
 import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.cube.model.CubeJoinedFlatTableDesc;
-import org.apache.kylin.dimension.Dictionary;
-import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
+import org.apache.kylin.metadata.model.IBuildable;
+import org.apache.kylin.metadata.model.ISegment;
+import org.apache.kylin.metadata.model.ISegmentAdvisor;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
 import org.apache.kylin.metadata.model.SegmentStatusEnum;
+import org.apache.kylin.metadata.model.Segments;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.realization.IRealization;
-import org.apache.kylin.metadata.realization.IRealizationSegment;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
 import com.fasterxml.jackson.annotation.JsonBackReference;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 
+@SuppressWarnings("serial")
 @JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
-public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment {
+public class CubeSegment implements IBuildable, ISegment, Serializable {
 
     @JsonBackReference
     private CubeInstance cubeInstance;
@@ -62,6 +71,10 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
     private long dateRangeStart;
     @JsonProperty("date_range_end")
     private long dateRangeEnd;
+    @JsonProperty("source_offset_start")
+    private long sourceOffsetStart;
+    @JsonProperty("source_offset_end")
+    private long sourceOffsetEnd;
     @JsonProperty("status")
     private SegmentStatusEnum status;
     @JsonProperty("size_kb")
@@ -78,7 +91,7 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
     private long createTimeUTC;
     @JsonProperty("cuboid_shard_nums")
     private Map<Long, Short> cuboidShardNums = Maps.newHashMap();
-    @JsonProperty("total_shards")
+    @JsonProperty("total_shards") //it is only valid when all cuboids are squshed into some shards. like the HBASE_STORAGE case, otherwise it'll stay 0
     private int totalShards = 0;
     @JsonProperty("blackout_cuboids")
     private List<Long> blackoutCuboids = Lists.newArrayList();
@@ -91,42 +104,55 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
     @JsonProperty("snapshots")
     private ConcurrentHashMap<String, String> snapshots; // table name ==> snapshot resource path
 
-    @JsonProperty("index_path")
-    private String indexPath;
-
     @JsonProperty("rowkey_stats")
     private List<Object[]> rowkeyStats = Lists.newArrayList();
 
-    private volatile Map<Long, Short> cuboidBaseShards = Maps.newHashMap();//cuboid id ==> base(starting) shard for this cuboid
+    @JsonProperty("source_partition_offset_start")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<Integer, Long> sourcePartitionOffsetStart = Maps.newHashMap();
+
+    @JsonProperty("source_partition_offset_end")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<Integer, Long> sourcePartitionOffsetEnd = Maps.newHashMap();
+
+    @JsonProperty("additionalInfo")
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private Map<String, String> additionalInfo = new LinkedHashMap<String, String>();
+
+    private Map<Long, Short> cuboidBaseShards = Maps.newConcurrentMap(); // cuboid id ==> base(starting) shard for this cuboid
+    
+    // lazy init
+    transient ISegmentAdvisor advisor = null;
 
     public CubeDesc getCubeDesc() {
         return getCubeInstance().getDescriptor();
     }
 
-    /**
-     * @param startDate
-     * @param endDate
-     * @return if(startDate == 0 && endDate == 0), returns "FULL_BUILD", else
-     * returns "yyyyMMddHHmmss_yyyyMMddHHmmss"
-     */
-    public static String getSegmentName(long startDate, long endDate) {
-        if (startDate == 0 && endDate == 0) {
+    public CuboidScheduler getCuboidScheduler() {
+        return getCubeInstance().getCuboidScheduler();
+    }
+
+    public static String makeSegmentName(TSRange tsRange, SegmentRange segRange) {
+        if (tsRange == null && segRange == null) {
             return "FULL_BUILD";
         }
 
+        if (segRange != null) {
+            return segRange.start.v + "_" + segRange.end.v;
+        }
+
+        // using time
         SimpleDateFormat dateFormat = new SimpleDateFormat("yyyyMMddHHmmss");
         dateFormat.setTimeZone(TimeZone.getTimeZone("GMT"));
-
-        return dateFormat.format(startDate) + "_" + dateFormat.format(endDate);
+        return dateFormat.format(tsRange.start.v) + "_" + dateFormat.format(tsRange.end.v);
     }
 
     // ============================================================================
 
-    @Override
     public KylinConfig getConfig() {
         return cubeInstance.getConfig();
     }
-    
+
     public String getUuid() {
         return uuid;
     }
@@ -135,7 +161,6 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
         this.uuid = id;
     }
 
-    @Override
     public String getName() {
         return name;
     }
@@ -144,24 +169,13 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
         this.name = name;
     }
 
-    public long getDateRangeStart() {
-        return dateRangeStart;
-    }
-
-    public void setDateRangeStart(long dateRangeStart) {
-        this.dateRangeStart = dateRangeStart;
-    }
-
-    public long getDateRangeEnd() {
-        return dateRangeEnd;
-    }
-
-    public void setDateRangeEnd(long dateRangeEnd) {
-        this.dateRangeEnd = dateRangeEnd;
-    }
-
     public SegmentStatusEnum getStatus() {
         return status;
+    }
+
+    @Override
+    public DataModelDesc getModel() {
+        return this.getCubeDesc().getModel();
     }
 
     public void setStatus(SegmentStatusEnum status) {
@@ -192,6 +206,7 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
         this.inputRecordsSize = inputRecordsSize;
     }
 
+    @Override
     public long getLastBuildTime() {
         return lastBuildTime;
     }
@@ -228,11 +243,10 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
         return cubeInstance;
     }
 
-    public void setCubeInstance(CubeInstance cubeInstance) {
+    void setCubeInstance(CubeInstance cubeInstance) {
         this.cubeInstance = cubeInstance;
     }
 
-    @Override
     public String getStorageLocationIdentifier() {
         return storageLocationIdentifier;
     }
@@ -270,15 +284,22 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
     }
 
     public String getDictResPath(TblColRef col) {
-        return getDictionaries().get(dictKey(col));
+        String r;
+        String dictKey = col.getIdentity();
+        r = getDictionaries().get(dictKey);
+
+        // try Kylin v1.x dict key as well
+        if (r == null) {
+            String v1DictKey = col.getTable() + "/" + col.getName();
+            r = getDictionaries().get(v1DictKey);
+        }
+
+        return r;
     }
 
     public void putDictResPath(TblColRef col, String dictResPath) {
-        getDictionaries().put(dictKey(col), dictResPath);
-    }
-
-    private String dictKey(TblColRef col) {
-        return col.getTable() + "/" + col.getName();
+        String dictKey = col.getIdentity();
+        getDictionaries().put(dictKey, dictResPath);
     }
 
     public void setStorageLocationIdentifier(String storageLocationIdentifier) {
@@ -287,36 +308,105 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
 
     public Map<TblColRef, Dictionary<String>> buildDictionaryMap() {
         Map<TblColRef, Dictionary<String>> result = Maps.newHashMap();
-        for (TblColRef col : getCubeDesc().getAllColumnsNeedDictionary()) {
+        for (TblColRef col : getCubeDesc().getAllColumnsHaveDictionary()) {
             result.put(col, (Dictionary<String>) getDictionary(col));
         }
         return result;
     }
 
     public Dictionary<String> getDictionary(TblColRef col) {
-        return CubeManager.getInstance(this.getCubeInstance().getConfig()).getDictionary(this, col);
+        TblColRef reuseCol = getCubeDesc().getDictionaryReuseColumn(col);
+        CubeManager cubeMgr = CubeManager.getInstance(this.getCubeInstance().getConfig());
+        return cubeMgr.getDictionary(this, reuseCol);
     }
 
     public CubeDimEncMap getDimensionEncodingMap() {
         return new CubeDimEncMap(this);
     }
 
-    public void validate() {
-        if (cubeInstance.getDescriptor().getModel().getPartitionDesc().isPartitioned() && dateRangeStart >= dateRangeEnd)
-            throw new IllegalStateException("dateRangeStart(" + dateRangeStart + ") must be smaller than dateRangeEnd(" + dateRangeEnd + ") in segment " + this);
+    // Hide the 4 confusing fields: dateRangeStart, dateRangeEnd, sourceOffsetStart, sourceOffsetEnd.
+    // They are now managed via SegmentRange and TSRange.
+    long _getDateRangeStart() {
+        return dateRangeStart;
+    }
+
+    void _setDateRangeStart(long dateRangeStart) {
+        this.dateRangeStart = dateRangeStart;
+    }
+
+    long _getDateRangeEnd() {
+        return dateRangeEnd;
+    }
+
+    void _setDateRangeEnd(long dateRangeEnd) {
+        this.dateRangeEnd = dateRangeEnd;
+    }
+
+    long _getSourceOffsetStart() {
+        return sourceOffsetStart;
+    }
+
+    void _setSourceOffsetStart(long sourceOffsetStart) {
+        this.sourceOffsetStart = sourceOffsetStart;
+    }
+
+    long _getSourceOffsetEnd() {
+        return sourceOffsetEnd;
+    }
+
+    void _setSourceOffsetEnd(long sourceOffsetEnd) {
+        this.sourceOffsetEnd = sourceOffsetEnd;
+    }
+    
+    @Override
+    public SegmentRange getSegRange() {
+        return getAdvisor().getSegRange();
+    }
+    
+    public void setSegRange(SegmentRange range) {
+        getAdvisor().setSegRange(range);
     }
 
     @Override
-    public int compareTo(CubeSegment other) {
-        long comp = this.dateRangeStart - other.dateRangeStart;
-        if (comp != 0)
-            return comp < 0 ? -1 : 1;
+    public TSRange getTSRange() {
+        return getAdvisor().getTSRange();
+    }
+    
+    public void setTSRange(TSRange range) {
+        getAdvisor().setTSRange(range);
+    }
+    
+    public boolean isOffsetCube() {
+        return getAdvisor().isOffsetCube();
+    }
+    
+    private ISegmentAdvisor getAdvisor() {
+        if (advisor != null)
+            return advisor;
+        
+        synchronized (this) {
+            if (advisor == null) {
+                advisor = Segments.newSegmentAdvisor(this);
+            }
+            return advisor;
+        }
+    }
+    
+    @Override
+    public void validate() throws IllegalStateException {
+    }
+    
+    public String getProject() {
+        return getCubeDesc().getProject();
+    }
 
-        comp = this.dateRangeEnd - other.dateRangeEnd;
+    @Override
+    public int compareTo(ISegment other) {
+        int comp = this.getSegRange().start.compareTo(other.getSegRange().start);
         if (comp != 0)
-            return comp < 0 ? -1 : 1;
-        else
-            return 0;
+            return comp;
+
+        return this.getSegRange().end.compareTo(other.getSegRange().end);
     }
 
     @Override
@@ -424,8 +514,13 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
         this.cuboidShardNums = newCuboidShards;
     }
 
-    public int getTotalShards() {
-        return totalShards;
+    public int getTotalShards(long cuboidId) {
+        if (totalShards > 0) {
+            return totalShards;
+        } else {
+            int ret = getCuboidShardNum(cuboidId);
+            return ret;
+        }
     }
 
     public void setTotalShards(int totalShards) {
@@ -433,11 +528,15 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
     }
 
     public short getCuboidBaseShard(Long cuboidId) {
+        if (totalShards == 0)
+            return 0;
+
         Short ret = cuboidBaseShards.get(cuboidId);
         if (ret == null) {
             ret = ShardingHash.getShard(cuboidId, totalShards);
             cuboidBaseShards.put(cuboidId, ret);
         }
+
         return ret;
     }
 
@@ -445,22 +544,31 @@ public class CubeSegment implements Comparable<CubeSegment>, IRealizationSegment
         return this.blackoutCuboids;
     }
 
-    @Override
     public IRealization getRealization() {
         return cubeInstance;
     }
 
-    @Override
-    public IJoinedFlatTableDesc getJoinedFlatTableDesc() {
-        return new CubeJoinedFlatTableDesc(this.getCubeDesc(), this);
+    public Map<String, String> getAdditionalInfo() {
+        return additionalInfo;
     }
 
-    public String getIndexPath() {
-        return indexPath;
+    public void setAdditionalInfo(Map<String, String> additionalInfo) {
+        this.additionalInfo = additionalInfo;
     }
 
-    public void setIndexPath(String indexPath) {
-        this.indexPath = indexPath;
+    public Map<Integer, Long> getSourcePartitionOffsetEnd() {
+        return sourcePartitionOffsetEnd;
     }
 
+    public void setSourcePartitionOffsetEnd(Map<Integer, Long> sourcePartitionOffsetEnd) {
+        this.sourcePartitionOffsetEnd = sourcePartitionOffsetEnd;
+    }
+
+    public Map<Integer, Long> getSourcePartitionOffsetStart() {
+        return sourcePartitionOffsetStart;
+    }
+
+    public void setSourcePartitionOffsetStart(Map<Integer, Long> sourcePartitionOffsetStart) {
+        this.sourcePartitionOffsetStart = sourcePartitionOffsetStart;
+    }
 }

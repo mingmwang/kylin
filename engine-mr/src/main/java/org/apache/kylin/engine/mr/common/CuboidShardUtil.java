@@ -21,7 +21,6 @@ package org.apache.kylin.engine.mr.common;
 import java.io.IOException;
 import java.util.Map;
 
-import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.CubeUpdate;
@@ -36,17 +35,14 @@ public class CuboidShardUtil {
     public static void saveCuboidShards(CubeSegment segment, Map<Long, Short> cuboidShards, int totalShards) throws IOException {
         CubeManager cubeManager = CubeManager.getInstance(segment.getConfig());
 
-        Map<Long, Short> filered = Maps.newHashMap();
+        Map<Long, Short> filtered = Maps.newHashMap();
         for (Map.Entry<Long, Short> entry : cuboidShards.entrySet()) {
-            if (entry.getValue() <= 1) {
-                logger.info("Cuboid {} has {} shards, skip saving it as an optimization", entry.getKey(), entry.getValue());
-            } else {
-                logger.info("Cuboid {} has {} shards, saving it", entry.getKey(), entry.getValue());
-                filered.put(entry.getKey(), entry.getValue());
+            if (entry.getValue() > 1) {
+                filtered.put(entry.getKey(), entry.getValue());
             }
         }
 
-        segment.setCuboidShardNums(filered);
+        segment.setCuboidShardNums(filtered);
         segment.setTotalShards(totalShards);
 
         CubeUpdate cubeBuilder = new CubeUpdate(segment.getCubeInstance());

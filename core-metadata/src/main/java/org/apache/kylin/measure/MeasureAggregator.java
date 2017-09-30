@@ -34,9 +34,9 @@ abstract public class MeasureAggregator<V> implements Serializable {
     public static int guessBigDecimalMemBytes() {
         // 116 returned by AggregationCacheMemSizeTest
         return 8 // aggregator obj shell
-        + 8 // ref to BigDecimal
-        + 8 // BigDecimal obj shell
-        + 100; // guess of BigDecimal internal
+                + 8 // ref to BigDecimal
+                + 8 // BigDecimal obj shell
+                + 100; // guess of BigDecimal internal
     }
 
     public static int guessDoubleMemBytes() {
@@ -70,6 +70,8 @@ abstract public class MeasureAggregator<V> implements Serializable {
     abstract public void reset();
 
     abstract public void aggregate(V value);
+
+    abstract public V aggregate(V value1, V value2);
 
     abstract public V getState();
 

@@ -54,7 +54,7 @@ public class RangeKeyDistributionReducer extends KylinReducer<Text, LongWritable
     private String output = null;
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
 
         if (context.getConfiguration().get(BatchConstants.CFG_OUTPUT_PATH) != null) {
@@ -77,15 +77,14 @@ public class RangeKeyDistributionReducer extends KylinReducer<Text, LongWritable
             maxRegionCount = Integer.valueOf(context.getConfiguration().get(BatchConstants.CFG_REGION_NUMBER_MAX));
         }
 
-        logger.info("Chosen cut for htable is " + cut + ", max region count=" + maxRegionCount
-            + ", min region count=" + minRegionCount + ", hfile size=" + hfileSizeGB);
+        logger.info("Chosen cut for htable is " + cut + ", max region count=" + maxRegionCount + ", min region count=" + minRegionCount + ", hfile size=" + hfileSizeGB);
 
         // add empty key at position 0
         gbPoints.add(new Text());
     }
 
     @Override
-    public void reduce(Text key, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
+    public void doReduce(Text key, Iterable<LongWritable> values, Context context) throws IOException, InterruptedException {
         for (LongWritable v : values) {
             bytesRead += v.get();
         }
@@ -97,7 +96,7 @@ public class RangeKeyDistributionReducer extends KylinReducer<Text, LongWritable
     }
 
     @Override
-    protected void cleanup(Context context) throws IOException, InterruptedException {
+    protected void doCleanup(Context context) throws IOException, InterruptedException {
         int nRegion = Math.round((float) gbPoints.size() / cut);
         nRegion = Math.max(minRegionCount, nRegion);
         nRegion = Math.min(maxRegionCount, nRegion);
@@ -116,9 +115,7 @@ public class RangeKeyDistributionReducer extends KylinReducer<Text, LongWritable
         System.out.println(hfilePerRegion + " hfile per region");
 
         Path hfilePartitionFile = new Path(output + "/part-r-00000_hfile");
-        SequenceFile.Writer hfilePartitionWriter = new SequenceFile.Writer(
-                hfilePartitionFile.getFileSystem(context.getConfiguration()),
-                context.getConfiguration(), hfilePartitionFile, ImmutableBytesWritable.class, NullWritable.class);
+        SequenceFile.Writer hfilePartitionWriter = new SequenceFile.Writer(hfilePartitionFile.getFileSystem(context.getConfiguration()), context.getConfiguration(), hfilePartitionFile, ImmutableBytesWritable.class, NullWritable.class);
         int hfileCountInOneRegion = 0;
         for (int i = hfileSizeGB; i < gbPoints.size(); i += hfileSizeGB) {
             hfilePartitionWriter.append(new ImmutableBytesWritable(gbPoints.get(i).getBytes()), NullWritable.get());

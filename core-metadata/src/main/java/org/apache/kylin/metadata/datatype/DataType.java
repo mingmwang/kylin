@@ -31,6 +31,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.apache.commons.lang.StringUtils;
+import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.util.BytesSerializer;
 import org.apache.kylin.common.util.BytesUtil;
 import org.apache.kylin.measure.MeasureTypeFactory;
@@ -52,9 +53,10 @@ public class DataType implements Serializable {
             VALID_TYPES.add(typeName);
         }
 
-        TYPE_PATTERN = Pattern.compile( //
+        TYPE_PATTERN = Pattern.compile(//
                 "(" + StringUtils.join(VALID_TYPES, "|") + ")" //
-                        + TYPE_PATTEN_TAIL, Pattern.CASE_INSENSITIVE);
+                        + TYPE_PATTEN_TAIL,
+                Pattern.CASE_INSENSITIVE);
     }
 
     // standard sql types, ref: http://www.w3schools.com/sql/sql_datatypes_general.asp
@@ -62,7 +64,7 @@ public class DataType implements Serializable {
         register("any", "char", "varchar", "string", //
                 "boolean", "byte", "binary", //
                 "int", "short", "long", "integer", "tinyint", "smallint", "bigint", //
-                "int4", "long8", //
+                "int4", "long8", // for test only
                 "float", "real", "double", "decimal", "numeric", //
                 "date", "time", "datetime", "timestamp", //
                 InnerDataTypeEnum.LITERAL.getDataType(), InnerDataTypeEnum.DERIVED.getDataType());
@@ -113,7 +115,8 @@ public class DataType implements Serializable {
     public static final DataType ANY = DataType.getType("any");
 
     static {
-        MeasureTypeFactory.init();
+        //to ensure the MeasureTypeFactory class has initialized
+        MeasureTypeFactory.getUDAFs();
     }
 
     public static DataType getType(String type) {
@@ -162,28 +165,35 @@ public class DataType implements Serializable {
                 try {
                     n = Integer.parseInt(parts[i]);
                 } catch (NumberFormatException e) {
-                    throw new IllegalArgumentException("bad data type -- " + datatype + ", precision/scale not numeric");
+                    throw new IllegalArgumentException(
+                            "bad data type -- " + datatype + ", precision/scale not numeric");
                 }
                 if (i == 0)
                     precision = n;
                 else if (i == 1)
                     scale = n;
                 else
-                    throw new IllegalArgumentException("bad data type -- " + datatype + ", too many precision/scale parts");
+                    throw new IllegalArgumentException(
+                            "bad data type -- " + datatype + ", too many precision/scale parts");
             }
         }
 
-        // FIXME 256 for unknown string precision
-        if ((name.equals("char") || name.equals("varchar")) && precision == -1) {
-            precision = 256; // to save memory at frontend, e.g. tableau will
-                             // allocate memory according to this
+        if (precision == -1) {
+            // FIXME 256 for unknown string precision
+
+            // why 256(255) as default? 
+            // to save memory at frontend, e.g. tableau will
+            // allocate memory according to this
+            if (name.equals("char")) {
+                precision = KylinConfig.getInstanceFromEnv().getDefaultCharPrecision();
+            } else if (name.equals("varchar")) {
+                precision = KylinConfig.getInstanceFromEnv().getDefaultVarcharPrecision();
+            } else if ((name.equals("decimal") || name.equals("numeric"))) {
+                precision = KylinConfig.getInstanceFromEnv().getDefaultDecimalPrecision();
+                scale = KylinConfig.getInstanceFromEnv().getDefaultDecimalScale();
+            }
         }
 
-        // FIXME (19,4) for unknown decimal precision
-        if ((name.equals("decimal") || name.equals("numeric")) && precision == -1) {
-            precision = 19;
-            scale = 4;
-        }
     }
 
     private String replaceLegacy(String str) {
@@ -209,6 +219,10 @@ public class DataType implements Serializable {
 
     public boolean isDateTimeFamily() {
         return DATETIME_FAMILY.contains(name);
+    }
+
+    public boolean isTimeFamily() {
+        return DATETIME_FAMILY.contains(name) && !isDate();
     }
 
     public boolean isDate() {

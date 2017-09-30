@@ -20,17 +20,15 @@ package org.apache.kylin.engine.mr.steps;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.util.ByteArray;
 import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.common.util.Pair;
 import org.apache.kylin.common.util.SplittedBytes;
 import org.apache.kylin.cube.CubeInstance;
@@ -43,28 +41,29 @@ import org.apache.kylin.cube.kv.RowKeyEncoder;
 import org.apache.kylin.cube.kv.RowKeyEncoderProvider;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.dict.DictionaryManager;
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.engine.mr.IMROutput2;
 import org.apache.kylin.engine.mr.KylinMapper;
+import org.apache.kylin.engine.mr.MRUtil;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
 import org.apache.kylin.engine.mr.common.BatchConstants;
-import org.apache.kylin.measure.MeasureCodec;
+import org.apache.kylin.measure.BufferedMeasureCodec;
 import org.apache.kylin.measure.MeasureIngester;
 import org.apache.kylin.measure.MeasureType;
 import org.apache.kylin.metadata.model.MeasureDesc;
-import org.apache.kylin.metadata.model.SegmentStatusEnum;
 import org.apache.kylin.metadata.model.TblColRef;
 
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 
 /**
  * @author ysong1, honma
  */
-@SuppressWarnings({"rawtypes", "unchecked"})
+@SuppressWarnings({ "rawtypes", "unchecked" })
 public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
 
     private KylinConfig config;
     private String cubeName;
-    private String segmentName;
+    private String segmentID;
     private CubeManager cubeManager;
     private CubeInstance cube;
     private CubeDesc cubeDesc;
@@ -78,31 +77,29 @@ public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
     private RowKeySplitter rowKeySplitter;
     private RowKeyEncoderProvider rowKeyEncoderProvider;
 
-    private HashMap<TblColRef, Boolean> dimensionsNeedDict = new HashMap<TblColRef, Boolean>();
 
     // for re-encode measures that use dictionary
     private List<Pair<Integer, MeasureIngester>> dictMeasures;
     private Map<TblColRef, Dictionary<String>> oldDicts;
     private Map<TblColRef, Dictionary<String>> newDicts;
     private List<MeasureDesc> measureDescs;
-    private MeasureCodec codec;
+    private BufferedMeasureCodec codec;
     private Object[] measureObjs;
-    private ByteBuffer valueBuf;
     private Text outputValue;
 
     @Override
-    protected void setup(Context context) throws IOException, InterruptedException {
+    protected void doSetup(Context context) throws IOException, InterruptedException {
         super.bindCurrentConfiguration(context.getConfiguration());
 
         cubeName = context.getConfiguration().get(BatchConstants.CFG_CUBE_NAME).toUpperCase();
-        segmentName = context.getConfiguration().get(BatchConstants.CFG_CUBE_SEGMENT_NAME).toUpperCase();
+        segmentID = context.getConfiguration().get(BatchConstants.CFG_CUBE_SEGMENT_ID);
 
         config = AbstractHadoopJob.loadKylinPropsAndMetadata();
 
         cubeManager = CubeManager.getInstance(config);
         cube = cubeManager.getCube(cubeName);
         cubeDesc = cube.getDescriptor();
-        mergedCubeSegment = cube.getSegment(segmentName, SegmentStatusEnum.NEW);
+        mergedCubeSegment = cube.getSegmentById(segmentID);
 
         // int colCount = cubeDesc.getRowkey().getRowKeyColumns().length;
         newKeyBodyBuf = new byte[RowConstants.ROWKEY_BUFFER_SIZE];// size will auto-grow
@@ -110,63 +107,47 @@ public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
 
         // decide which source segment
         FileSplit fileSplit = (FileSplit) context.getInputSplit();
-        sourceCubeSegment = findSourceSegment(fileSplit, cube);
+        IMROutput2.IMRMergeOutputFormat outputFormat = MRUtil.getBatchMergeOutputSide2(mergedCubeSegment).getOuputFormat();
+        sourceCubeSegment = outputFormat.findSourceSegment(fileSplit, cube);
 
         rowKeySplitter = new RowKeySplitter(sourceCubeSegment, 65, 255);
         rowKeyEncoderProvider = new RowKeyEncoderProvider(mergedCubeSegment);
 
         measureDescs = cubeDesc.getMeasures();
-        codec = new MeasureCodec(measureDescs);
+        codec = new BufferedMeasureCodec(measureDescs);
         measureObjs = new Object[measureDescs.size()];
-        valueBuf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
         outputValue = new Text();
-        
+
         dictMeasures = Lists.newArrayList();
+        oldDicts = Maps.newHashMap();
+        newDicts = Maps.newHashMap();
         for (int i = 0; i < measureDescs.size(); i++) {
             MeasureDesc measureDesc = measureDescs.get(i);
             MeasureType measureType = measureDesc.getFunction().getMeasureType();
-            if (measureType.getColumnsNeedDictionary(measureDesc.getFunction()).isEmpty() == false) {
+            List<TblColRef> columns = measureType.getColumnsNeedDictionary(measureDesc.getFunction());
+            boolean needReEncode = false;
+            for (TblColRef col : columns) {
+                //handle the column that all records is null
+                if (sourceCubeSegment.getDictionary(col) == null) {
+                    continue;
+                }
+
+                oldDicts.put(col, sourceCubeSegment.getDictionary(col));
+                newDicts.put(col, mergedCubeSegment.getDictionary(col));
+                if (!sourceCubeSegment.getDictionary(col).equals(mergedCubeSegment.getDictionary(col))) {
+                    needReEncode = true;
+                }
+            }
+            if (needReEncode) {
                 dictMeasures.add(Pair.newPair(i, measureType.newIngester()));
             }
         }
-        if (dictMeasures.size() > 0) {
-            oldDicts = sourceCubeSegment.buildDictionaryMap();
-            newDicts = mergedCubeSegment.buildDictionaryMap();
-        }
-    }
-
-    private static final Pattern JOB_NAME_PATTERN = Pattern.compile("kylin-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})");
-
-    public static CubeSegment findSourceSegment(FileSplit fileSplit, CubeInstance cube) {
-        String filePath = fileSplit.getPath().toString();
-        String jobID = extractJobIDFromPath(filePath);
-        return findSegmentWithUuid(jobID, cube);
-    }
-
-    private static String extractJobIDFromPath(String path) {
-        Matcher matcher = JOB_NAME_PATTERN.matcher(path);
-        // check the first occurrence
-        if (matcher.find()) {
-            return matcher.group(1);
-        } else {
-            throw new IllegalStateException("Can not extract job ID from file path : " + path);
-        }
-    }
-
-    private static CubeSegment findSegmentWithUuid(String jobID, CubeInstance cubeInstance) {
-        for (CubeSegment segment : cubeInstance.getSegments()) {
-            String lastBuildJobID = segment.getLastBuildJobID();
-            if (lastBuildJobID != null && lastBuildJobID.equalsIgnoreCase(jobID)) {
-                return segment;
-            }
-        }
-        throw new IllegalStateException("No merging segment's last build job ID equals " + jobID);
     }
 
     @Override
-    public void map(Text key, Text value, Context context) throws IOException, InterruptedException {
+    public void doMap(Text key, Text value, Context context) throws IOException, InterruptedException {
         long cuboidID = rowKeySplitter.split(key.getBytes());
-        Cuboid cuboid = Cuboid.findById(cubeDesc, cuboidID);
+        Cuboid cuboid = Cuboid.findById(cube, cuboidID);
         RowKeyEncoder rowkeyEncoder = rowKeyEncoderProvider.getRowkeyEncoder(cuboid);
 
         SplittedBytes[] splittedByteses = rowKeySplitter.getSplitBuffers();
@@ -177,11 +158,20 @@ public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
             int useSplit = i + bodySplitOffset;
             TblColRef col = cuboid.getColumns().get(i);
 
-            if (this.checkNeedMerging(col)) {
+            if (cubeDesc.getRowkey().isUseDictionary(col)) {
                 // if dictionary on fact table column, needs rewrite
                 DictionaryManager dictMgr = DictionaryManager.getInstance(config);
-                Dictionary<?> sourceDict = dictMgr.getDictionary(sourceCubeSegment.getDictResPath(col));
-                Dictionary<?> mergedDict = dictMgr.getDictionary(mergedCubeSegment.getDictResPath(col));
+                Dictionary<String> mergedDict = dictMgr.getDictionary(mergedCubeSegment.getDictResPath(col));
+
+                Dictionary<String> sourceDict;
+                // handle the column that all records is null
+                if (sourceCubeSegment.getDictionary(col) == null) {
+                    BytesUtil.writeUnsigned(mergedDict.nullId(), newKeyBodyBuf, bufOffset, mergedDict.getSizeOfId());
+                    bufOffset += mergedDict.getSizeOfId();
+                    continue;
+                } else {
+                    sourceDict = dictMgr.getDictionary(sourceCubeSegment.getDictResPath(col));
+                }
 
                 while (sourceDict.getSizeOfValue() > newKeyBodyBuf.length - bufOffset || //
                         mergedDict.getSizeOfValue() > newKeyBodyBuf.length - bufOffset || //
@@ -194,11 +184,12 @@ public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
                 int idInSourceDict = BytesUtil.readUnsigned(splittedByteses[useSplit].value, 0, splittedByteses[useSplit].length);
                 int idInMergedDict;
 
-                int size = sourceDict.getValueBytesFromId(idInSourceDict, newKeyBodyBuf, bufOffset);
-                if (size < 0) {
+                //int size = sourceDict.getValueBytesFromId(idInSourceDict, newKeyBodyBuf, bufOffset);
+                String v = sourceDict.getValueFromId(idInSourceDict);
+                if (v == null) {
                     idInMergedDict = mergedDict.nullId();
                 } else {
-                    idInMergedDict = mergedDict.getIdFromValueBytes(newKeyBodyBuf, bufOffset, size);
+                    idInMergedDict = mergedDict.getIdFromValue(v);
                 }
 
                 BytesUtil.writeUnsigned(idInMergedDict, newKeyBodyBuf, bufOffset, mergedDict.getSizeOfId());
@@ -218,9 +209,9 @@ public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
 
         int fullKeySize = rowkeyEncoder.getBytesLength();
         while (newKeyBuf.array().length < fullKeySize) {
-            newKeyBuf.set(new byte[newKeyBuf.length() * 2]);
+            newKeyBuf = new ByteArray(newKeyBuf.length() * 2);
         }
-        newKeyBuf.set(0, fullKeySize);
+        newKeyBuf.setLength(fullKeySize);
 
         rowkeyEncoder.encode(new ByteArray(newKeyBodyBuf, 0, bufOffset), newKeyBuf);
         outputKey.set(newKeyBuf.array(), 0, fullKeySize);
@@ -233,27 +224,11 @@ public class MergeCuboidMapper extends KylinMapper<Text, Text, Text, Text> {
                 MeasureIngester ingester = pair.getSecond();
                 measureObjs[i] = ingester.reEncodeDictionary(measureObjs[i], measureDescs.get(i), oldDicts, newDicts);
             }
-            valueBuf.clear();
-            codec.encode(measureObjs, valueBuf);
+            ByteBuffer valueBuf = codec.encode(measureObjs);
             outputValue.set(valueBuf.array(), 0, valueBuf.position());
             value = outputValue;
         }
 
         context.write(outputKey, value);
-    }
-
-    private Boolean checkNeedMerging(TblColRef col) throws IOException {
-        Boolean ret = dimensionsNeedDict.get(col);
-        if (ret != null)
-            return ret;
-        else {
-            ret = cubeDesc.getRowkey().isUseDictionary(col);
-            if (ret) {
-                String dictTable = DictionaryManager.getInstance(config).decideSourceData(cubeDesc.getModel(), cubeDesc.getRowkey().isUseDictionary(col), col).getTable();
-                ret = cubeDesc.getFactTable().equalsIgnoreCase(dictTable);
-            }
-            dimensionsNeedDict.put(col, ret);
-            return ret;
-        }
     }
 }

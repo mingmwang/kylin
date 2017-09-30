@@ -17,34 +17,46 @@
  limitations under the License.
 -->
 
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
     <artifactId>kylin-core-job</artifactId>
     <packaging>jar</packaging>
-    <name>Kylin:Core-Job</name>
+    <name>Apache Kylin - Core Job</name>
+    <description>Apache Kylin - Core Job</description>
 
     <parent>
         <groupId>org.apache.kylin</groupId>
         <artifactId>kylin</artifactId>
-        <version>1.5.2-SNAPSHOT</version>
-
+        <version>2.2.0-SNAPSHOT</version>
     </parent>
 
-    <properties>
-    </properties>
-
     <dependencies>
-    
+
         <dependency>
             <groupId>org.apache.kylin</groupId>
             <artifactId>kylin-core-cube</artifactId>
-            <version>${project.parent.version}</version>
         </dependency>
 
+        <!-- Provided -->
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.apache.curator</groupId>
             <artifactId>curator-recipes</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.zookeeper</groupId>
+                    <artifactId>zookeeper</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
 
         <!-- Env & Test -->
@@ -53,7 +65,6 @@
             <artifactId>kylin-core-common</artifactId>
             <type>test-jar</type>
             <scope>test</scope>
-            <version>${project.parent.version}</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>

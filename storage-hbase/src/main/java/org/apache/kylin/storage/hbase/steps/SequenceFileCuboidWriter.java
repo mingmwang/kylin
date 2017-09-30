@@ -18,21 +18,21 @@
 
 package org.apache.kylin.storage.hbase.steps;
 
+import java.io.IOException;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.SequenceFile;
 import org.apache.hadoop.io.Text;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.engine.mr.ByteArrayWritable;
-import org.apache.kylin.engine.mr.HadoopUtil;
 import org.apache.kylin.engine.mr.JobBuilderSupport;
 import org.apache.kylin.engine.mr.steps.KVGTRecordWriter;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
 
 /**
  */
@@ -46,7 +46,7 @@ public class SequenceFileCuboidWriter extends KVGTRecordWriter {
         try {
             initiate();
         } catch (IOException e) {
-           throw new RuntimeException(e);
+            throw new RuntimeException(e);
         }
     }
 
@@ -55,7 +55,7 @@ public class SequenceFileCuboidWriter extends KVGTRecordWriter {
             JobBuilderSupport jobBuilderSupport = new JobBuilderSupport(cubeSegment, "SYSTEM");
             String cuboidRoot = jobBuilderSupport.getCuboidRootPath(cubeSegment);
             Path cuboidPath = new Path(cuboidRoot);
-            FileSystem fs = HadoopUtil.getFileSystem(cuboidRoot);
+            FileSystem fs = HadoopUtil.getWorkingFileSystem();
             try {
                 if (fs.exists(cuboidPath)) {
                     fs.delete(cuboidPath, true);
@@ -75,7 +75,7 @@ public class SequenceFileCuboidWriter extends KVGTRecordWriter {
 
     @Override
     protected void writeAsKeyValue(ByteArrayWritable key, ByteArrayWritable value) throws IOException {
-       
+
         Text outputValue = new Text();
         Text outputKey = new Text();
         outputKey.set(key.array(), key.offset(), key.length());

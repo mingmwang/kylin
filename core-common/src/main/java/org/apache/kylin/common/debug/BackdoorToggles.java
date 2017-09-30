@@ -23,7 +23,14 @@ import java.util.Map;
 import org.apache.commons.lang.StringUtils;
 import org.apache.kylin.common.util.Pair;
 
+import com.google.common.collect.Maps;
+
 /**
+ * BackdoorToggles and QueryContext are similar because they're both hosting per-query thread local variables.
+ * The difference is that BackdoorToggles are specified by user input and work for debug purpose. QueryContext
+ * is used voluntarily by program itself
+ * 
+ * BackdoorToggles is part of SQLRequest, QueryContext does not belong to SQLRequest
  */
 public class BackdoorToggles {
 
@@ -31,6 +38,31 @@ public class BackdoorToggles {
 
     public static void setToggles(Map<String, String> toggles) {
         _backdoorToggles.set(toggles);
+    }
+
+    public static void addToggle(String key, String value) {
+        Map<String, String> map = _backdoorToggles.get();
+        if (map == null) {
+            setToggles(Maps.<String, String> newHashMap());
+        }
+        _backdoorToggles.get().put(key, value);
+    }
+    
+    public static void addToggles(Map<String, String> toggles) {
+        Map<String, String> map = _backdoorToggles.get();
+        if (map == null) {
+            setToggles(Maps.<String, String> newHashMap());
+        }
+        _backdoorToggles.get().putAll(toggles);
+    }
+    
+    // try avoid using this generic method
+    public static String getToggle(String key) {
+        Map<String, String> map = _backdoorToggles.get();
+        if (map == null)
+            return null;
+        
+        return map.get(key);
     }
 
     public static String getCoprocessorBehavior() {
@@ -57,6 +89,18 @@ public class BackdoorToggles {
         return getBoolean(DEBUG_TOGGLE_LOCAL_COPROCESSOR);
     }
 
+    public static String getPartitionDumpDir() {
+        return getString(DEBUG_TOGGLE_PARTITION_DUMP_DIR);
+    }
+
+    public static String getDumpedPartitionDir() {
+        return getString(DEBUG_TOGGLE_DUMPED_PARTITION_DIR);
+    }
+
+    public static boolean getCheckAllModels(){
+        return getBoolean(DEBUG_TOGGLE_CHECK_ALL_MODELS);
+    }
+
     public static int getQueryTimeout() {
         String v = getString(DEBUG_TOGGLE_QUERY_TIMEOUT);
         if (v == null)
@@ -75,6 +119,18 @@ public class BackdoorToggles {
         }
     }
 
+    public static Integer getStatementMaxRows() {
+        String v = getString(ATTR_STATEMENT_MAX_ROWS);
+        if (v == null)
+            return null;
+        else
+            return Integer.valueOf(v);
+    }
+
+    public static boolean getPrepareOnly() {
+        return getBoolean(DEBUG_TOGGLE_PREPARE_ONLY);
+    }
+    
     private static String getString(String key) {
         Map<String, String> toggles = _backdoorToggles.get();
         if (toggles == null) {
@@ -177,4 +233,56 @@ public class BackdoorToggles {
      */
     public final static String DEBUG_TOGGLE_SHARD_ASSIGNMENT = "DEBUG_TOGGLE_SHARD_ASSIGNMENT";
 
+    /**
+     * set DEBUG_TOGGLE_PARTITION_DUMP_DIR="dir" to dump the partitions from storage.
+     * The dumped partitions are used for performance profiling, for example.
+     *
+     example:(put it into request body)
+     "backdoorToggles": {
+     "DEBUG_TOGGLE_PARTITION_DUMP_DIR": "/tmp/dumping"
+     }
+     */
+    public final static String DEBUG_TOGGLE_PARTITION_DUMP_DIR = "DEBUG_TOGGLE_PARTITION_DUMP_DIR";
+
+    /**
+     * set DEBUG_TOGGLE_DUMPED_PARTITION_DIR="dir" to specify the dir to retrieve previously dumped partitions
+     * it's a companion toggle with DEBUG_TOGGLE_PARTITION_DUMP_DIR
+     *
+     example:(put it into request body)
+     "backdoorToggles": {
+     "DEBUG_TOGGLE_DUMPED_PARTITION_DIR": "/tmp/dumped"
+     }
+     */
+    public final static String DEBUG_TOGGLE_DUMPED_PARTITION_DIR = "DEBUG_TOGGLE_DUMPED_PARTITION_DIR";
+
+    /**
+     * set DEBUG_TOGGLE_PREPARE_ONLY="true" to prepare the sql statement and get its result set metadata
+     *
+     example:(put it into request body)
+     "backdoorToggles": {
+     "DEBUG_TOGGLE_PREPARE_ONLY": "true"
+     }
+     */
+    public final static String DEBUG_TOGGLE_PREPARE_ONLY = "DEBUG_TOGGLE_PREPARE_ONLY";
+    
+    // properties on statement may go with this "channel" too
+    /**
+     * set ATTR_STATEMENT_MAX_ROWS="maxRows" to statement's max rows property
+     *
+     example:(put it into request body)
+     "backdoorToggles": {
+     "ATTR_STATEMENT_MAX_ROWS": "10"
+     }
+     */
+    public final static String ATTR_STATEMENT_MAX_ROWS = "ATTR_STATEMENT_MAX_ROWS";
+
+    /**
+     * set DEBUG_TOGGLE_CHECK_ALL_MODELS="true" to check all OlapContexts when selecting realization
+     *
+     example:(put it into request body)
+     "backdoorToggles": {
+     "DEBUG_TOGGLE_CHECK_ALL_MODELS": "true"
+     }
+     */
+    public final static String DEBUG_TOGGLE_CHECK_ALL_MODELS = "DEBUG_TOGGLE_CHECK_ALL_MODELS";
 }

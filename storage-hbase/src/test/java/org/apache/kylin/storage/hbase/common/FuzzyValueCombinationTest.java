@@ -26,10 +26,12 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.storage.translate.FuzzyValueCombination;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
 import com.google.common.collect.Maps;
@@ -38,16 +40,34 @@ import com.google.common.collect.Maps;
  * @author yangli9
  * 
  */
-public class FuzzyValueCombinationTest {
-
+public class FuzzyValueCombinationTest extends LocalFileMetadataTestCase {
     static final TableDesc table = new TableDesc();
+    static TblColRef col1;
+    static TblColRef col2;
+    static TblColRef col3;
+
     static {
         table.setName("table");
         table.setDatabase("default");
     }
-    static final TblColRef col1 = col(1, table);
-    static final TblColRef col2 = col(2, table);
-    static final TblColRef col3 = col(3, table);
+
+    @BeforeClass
+    public static void setUp() throws Exception {
+        staticCreateTestMetadata();
+
+        col1 = col(1, table);
+        col2 = col(2, table);
+        col3 = col(3, table);
+    }
+
+    @AfterClass
+    public static void after() throws Exception {
+        cleanAfterClass();
+    }
+
+    private static TblColRef col(int i, TableDesc t) {
+        return TblColRef.mockup(t, i, "Col" + i, "string");
+    }
 
     @Test
     public void testBasics() {
@@ -102,11 +122,6 @@ public class FuzzyValueCombinationTest {
             System.out.println(item);
         }
         assertEquals(0, result.size());
-    }
-
-    private static TblColRef col(int i, TableDesc t) {
-        ColumnDesc col = ColumnDesc.mockup(t, i, "Col" + i, "string");
-        return new TblColRef(col);
     }
 
     private Set<String> set(String... values) {

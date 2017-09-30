@@ -31,14 +31,10 @@ import org.apache.kylin.metadata.datatype.LongMutable;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.storage.hbase.util.Results;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  */
 public class RowValueDecoder implements Cloneable {
-
-    private static final Logger logger = LoggerFactory.getLogger(RowValueDecoder.class);
 
     private final HBaseColumnDesc hbaseColumn;
     private final byte[] hbaseColumnFamily;
@@ -121,7 +117,7 @@ public class RowValueDecoder implements Cloneable {
     }
 
     // result is in order of <code>CubeDesc.getMeasures()</code>
-    public void loadCubeMeasureArray(Object result[]) {
+    public void loadCubeMeasureArray(Object[] result) {
         int[] measureIndex = hbaseColumn.getMeasureIndex();
         for (int i = 0; i < measureIndex.length; i++) {
             result[measureIndex[i]] = values[i];

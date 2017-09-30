@@ -20,54 +20,59 @@
 <!doctype html>
 <html id="ng-app">
 <head>
-    <meta charset="utf-8">
-    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
-    <base href="/kylin/">
-    <link rel="icon" href="image/favicon.ico" type="image/x-icon">
-    <link rel="shortcut icon" href="image/favicon.ico" type="image/x-icon">
-    <title>Kylin</title>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <!-- HTTP 1.1 -->
+  <meta http-equiv="pragma" content="no-cache">
+  <!-- HTTP 1.0 -->
+  <meta http-equiv="cache-control" content="no-cache">
+  <meta name="format-detection" content="telephone=no">
+  <base href="/kylin/">
+  <link rel="icon" href="image/favicon.ico" type="image/x-icon">
+  <link rel="shortcut icon" href="image/favicon.ico" type="image/x-icon">
+  <title>Kylin</title>
 
-    <!-- ref:css css/styles.min.<%= buildNumber %>.css -->
-    <link rel="stylesheet" type="text/css" href="components/bootstrap/dist/css/bootstrap.min.css">
-    <link rel="stylesheet" type="text/css" href="components/components-font-awesome/css/font-awesome.css">
+  <!-- ref:css css/styles.min.<%= buildNumber %>.css -->
+  <link rel="stylesheet" type="text/css" href="components/bootstrap/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" type="text/css" href="components/components-font-awesome/css/font-awesome.css">
 
-    <link rel="stylesheet" type="text/css" href="components/angular-tree-control/css/tree-control.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-tree-control/css/tree-control-attribute.css">
-    <link rel="stylesheet" type="text/css" href="components/messenger/build/css/messenger.css">
-    <link rel="stylesheet" type="text/css" href="components/messenger/build/css/messenger-theme-ice.css">
-    <link rel="stylesheet" type="text/css" href="components/ng-grid/ng-grid.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-ui-grid/ui-grid.min.css">
-    <link rel="stylesheet" type="text/css" href="components/chosen/chosen.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-chosen-localytics/chosen-spinner.css">
-    <link rel="stylesheet" type="text/css" href="components/animate.css/animate.css">
-    <link rel="stylesheet" type="text/css" href="components/nvd3/nv.d3.min.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-tree-control/css/tree-control.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-tree-control/css/tree-control-attribute.css">
+  <link rel="stylesheet" type="text/css" href="components/messenger/build/css/messenger.css">
+  <link rel="stylesheet" type="text/css" href="css/messenger-theme-ice.css">
+  <link rel="stylesheet" type="text/css" href="components/ng-grid/ng-grid.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-ui-grid/ui-grid.min.css">
+  <link rel="stylesheet" type="text/css" href="components/chosen/chosen.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-chosen-localytics/chosen-spinner.css">
+  <link rel="stylesheet" type="text/css" href="components/animate.css/animate.css">
+  <link rel="stylesheet" type="text/css" href="components/nvd3/nv.d3.min.css">
 
-    <link rel="stylesheet" type="text/css" href="css/AdminLTE.css">
-    <link rel="stylesheet" type="text/css" href="components/bootstrap-sweetalert/lib/sweet-alert.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-bootstrap-nav-tree/dist/abn_tree.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-toggle-switch/angular-toggle-switch.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-ui-select/dist/select.css">
-    <link rel="stylesheet" type="text/css" href="components/angular-bootstrap-datetimepicker/src/css/datetimepicker.css">
+  <link rel="stylesheet" type="text/css" href="css/AdminLTE.css">
+  <link rel="stylesheet" type="text/css" href="components/bootstrap-sweetalert/lib/sweet-alert.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-bootstrap-nav-tree/dist/abn_tree.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-toggle-switch/angular-toggle-switch.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-ui-select/dist/select.css">
+  <link rel="stylesheet" type="text/css" href="components/angular-bootstrap-datetimepicker/src/css/datetimepicker.css">
 
-    <link rel="stylesheet/less" href="less/build.less">
-    <!-- endref -->
+  <link rel="stylesheet/less" href="less/build.less">
+  <!-- endref -->
 
-    <!-- This has to be at the top to make it works in IE   -->
-    <!--[if lte IE 8]>
-    <script>
-        document.createElement('loading');
-        document.createElement('pagination');
-    </script>
-    <![endif]-->
+  <!-- This has to be at the top to make it works in IE   -->
+  <!--[if lte IE 8]>
+  <script>
+    document.createElement('loading');
+    document.createElement('pagination');
+  </script>
+  <![endif]-->
 </head>
 
 <body ng-controller="PageCtrl">
 
 <div class="navbar navbar-default navbar-fixed-top" ng-include="'partials/header.html'"></div>
 <div id="main" class="main-container">
-    <div class="main-content">
-        <div class="page-content" ng-view></div>
-    </div>
+  <div class="main-content">
+    <div class="page-content" ng-view></div>
+  </div>
 </div>
 <footer class="navbar-fixed-bottom navbar-footer" ng-include="'partials/footer.html'"></footer>
 
@@ -83,7 +88,6 @@
 <script src="components/angularLocalStorage/src/angularLocalStorage.js"></script>
 <script src="components/angular-base64/angular-base64.js"></script>
 <script src="components/ng-grid/build/ng-grid.js"></script>
-<script src="components/angular-ui-grid/ui-grid.min.js"></script>
 <script src="components/angular-tree-control/angular-tree-control.js"></script>
 <script src="components/ace-builds/src-min-noconflict/ace.js"></script>
 <script src="components/ace-builds/src-noconflict/ext-language_tools.js"></script>
@@ -118,6 +122,7 @@
 <script src="js/directives/angular-tree-control.js"></script>
 <script src="js/directives/datetimepicker.js"></script>
 <script src="js/directives/select.js"></script>
+<script src="js/directives/ui-grid.js"></script>
 
 <script src="js/factories/graph.js"></script>
 <script src="js/services/cache.js"></script>
@@ -128,7 +133,7 @@
 <script src="js/services/auth.js"></script>
 <script src="js/services/cubeDesc.js"></script>
 <script src="js/services/model.js"></script>
-
+<script src="js/services/encodings.js"></script>
 <script src="js/services/cubes.js"></script>
 <script src="js/services/streaming.js"></script>
 <script src="js/services/graph.js"></script>
@@ -163,7 +168,7 @@
 <!--New GUI-->
 <script src="js/model/modelsManager.js"></script>
 <script src="js/services/badQuery.js"></script>
-
+<script src="js/utils/utils.js"></script>
 <script src="js/controllers/page.js"></script>
 <script src="js/controllers/index.js"></script>
 <script src="js/controllers/access.js"></script>
@@ -187,6 +192,9 @@
 <!--New GUI-->
 <script src="js/controllers/modelSchema.js"></script>
 <script src="js/controllers/modelDimensions.js"></script>
+<script src="js/controllers/modelDataModel.js"></script>
+<script src="js/controllers/modelMeasures.js"></script>
+<script src="js/controllers/modelConditionsSettings.js"></script>
 <script src="js/controllers/modelRefresh.js"></script>
 <script src="js/controllers/modelEdit.js"></script>
 
@@ -205,39 +213,39 @@
 <!--template-->
 <!-- static template for cube save/update result notification -->
 <script type="text/ng-template" id="cubeResultError.html">
-    <div class="callout">
-        <h4>Error Message</h4>
-        <p>{{text}}</p>
-    </div>
-    <div class="callout callout-danger">
-        <h4>Cube Schema</h4>
-        <pre>{{schema}}</pre>
-    </div>
+  <div class="callout">
+    <h4>Error Message</h4>
+    <p>{{text}}</p>
+  </div>
+  <div class="callout callout-danger">
+    <h4>Cube Schema</h4>
+    <pre>{{schema}}</pre>
+  </div>
 </script>
 
 <script type="text/ng-template" id="cubeResultSuccess.html">
-    <div class="callout callout-info">
-        <p>{{text}}</p>
-    </div>
+  <div class="callout callout-info">
+    <p>{{text}}</p>
+  </div>
 </script>
 
 <!--template-->
 <!-- static template for cube save/update result notification -->
 <script type="text/ng-template" id=" modelResultError.html">
-    <div class="callout callout-info">
-        <h4>Error Message</h4>
-        <p>{{text}}</p>
-    </div>
-    <div class="callout callout-danger">
-        <h4>Model Schema</h4>
-        <pre>{{schema}}</pre>
-    </div>
+  <div class="callout callout-info">
+    <h4>Error Message</h4>
+    <p>{{text}}</p>
+  </div>
+  <div class="callout callout-danger">
+    <h4>Model Schema</h4>
+    <pre>{{schema}}</pre>
+  </div>
 </script>
 
 <script type="text/ng-template" id="modelResultSuccess.html">
-    <div class="callout callout-info">
-        <p>{{text}}</p>
-    </div>
+  <div class="callout callout-info">
+    <p>{{text}}</p>
+  </div>
 </script>
 
 <!-- static template for cube save/update result notification -->
@@ -260,7 +268,6 @@
   <div class="callout callout-info">
     <p>{{text}}</p>
   </div>
-
-
+</script>
 </body>
 </html>

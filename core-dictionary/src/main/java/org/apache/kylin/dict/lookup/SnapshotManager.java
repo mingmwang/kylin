@@ -19,18 +19,26 @@
 package org.apache.kylin.dict.lookup;
 
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.NavigableSet;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
 
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.model.TableDesc;
-import org.apache.kylin.source.ReadableTable;
-import org.apache.kylin.source.ReadableTable.TableSignature;
+import org.apache.kylin.source.IReadableTable;
+import org.apache.kylin.source.IReadableTable.TableSignature;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.cache.CacheBuilder;
+import com.google.common.cache.CacheLoader;
+import com.google.common.cache.LoadingCache;
+import com.google.common.cache.RemovalListener;
+import com.google.common.cache.RemovalNotification;
 
 /**
  * @author yangli9
@@ -40,7 +48,7 @@ public class SnapshotManager {
     private static final Logger logger = LoggerFactory.getLogger(SnapshotManager.class);
 
     // static cached instances
-    private static final ConcurrentHashMap<KylinConfig, SnapshotManager> SERVICE_CACHE = new ConcurrentHashMap<KylinConfig, SnapshotManager>();
+    private static final ConcurrentMap<KylinConfig, SnapshotManager> SERVICE_CACHE = new ConcurrentHashMap<KylinConfig, SnapshotManager>();
 
     public static SnapshotManager getInstance(KylinConfig config) {
         SnapshotManager r = SERVICE_CACHE.get(config);
@@ -50,46 +58,71 @@ public class SnapshotManager {
                 if (r == null) {
                     r = new SnapshotManager(config);
                     SERVICE_CACHE.put(config, r);
+                    if (SERVICE_CACHE.size() > 1) {
+                        logger.warn("More than one singleton exist");
+                    }
                 }
             }
         }
         return r;
     }
 
+    public static void clearCache() {
+        synchronized (SERVICE_CACHE) {
+            SERVICE_CACHE.clear();
+        }
+    }
+
     // ============================================================================
 
     private KylinConfig config;
-    private ConcurrentHashMap<String, SnapshotTable> snapshotCache; // resource
+    private LoadingCache<String, SnapshotTable> snapshotCache; // resource
 
     // path ==>
     // SnapshotTable
 
     private SnapshotManager(KylinConfig config) {
         this.config = config;
-        snapshotCache = new ConcurrentHashMap<String, SnapshotTable>();
+        this.snapshotCache = CacheBuilder.newBuilder().removalListener(new RemovalListener<String, SnapshotTable>() {
+            @Override
+            public void onRemoval(RemovalNotification<String, SnapshotTable> notification) {
+                SnapshotManager.logger.info("Snapshot with resource path " + notification.getKey() + " is removed due to " + notification.getCause());
+            }
+        }).maximumSize(config.getCachedSnapshotMaxEntrySize())//
+                .expireAfterWrite(1, TimeUnit.DAYS).build(new CacheLoader<String, SnapshotTable>() {
+                    @Override
+                    public SnapshotTable load(String key) throws Exception {
+                        SnapshotTable snapshotTable = SnapshotManager.this.load(key, true);
+                        return snapshotTable;
+                    }
+                });
     }
 
     public void wipeoutCache() {
-        snapshotCache.clear();
+        snapshotCache.invalidateAll();
     }
 
     public SnapshotTable getSnapshotTable(String resourcePath) throws IOException {
-        SnapshotTable r = snapshotCache.get(resourcePath);
-        if (r == null) {
-            r = load(resourcePath, true);
-            snapshotCache.put(resourcePath, r);
+        try {
+            SnapshotTable r = snapshotCache.get(resourcePath);
+            if (r == null) {
+                r = load(resourcePath, true);
+                snapshotCache.put(resourcePath, r);
+            }
+            return r;
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e.getCause());
         }
-        return r;
     }
 
     public void removeSnapshot(String resourcePath) throws IOException {
         ResourceStore store = MetadataManager.getInstance(this.config).getStore();
         store.deleteResource(resourcePath);
-        snapshotCache.remove(resourcePath);
+        snapshotCache.invalidate(resourcePath);
     }
 
-    public SnapshotTable buildSnapshot(ReadableTable table, TableDesc tableDesc) throws IOException {
-        SnapshotTable snapshot = new SnapshotTable(table);
+    public SnapshotTable buildSnapshot(IReadableTable table, TableDesc tableDesc) throws IOException {
+        SnapshotTable snapshot = new SnapshotTable(table, tableDesc.getIdentity());
         snapshot.updateRandomUuid();
 
         String dup = checkDupByInfo(snapshot);
@@ -108,8 +141,8 @@ public class SnapshotManager {
         return trySaveNewSnapshot(snapshot);
     }
 
-    public SnapshotTable rebuildSnapshot(ReadableTable table, TableDesc tableDesc, String overwriteUUID) throws IOException {
-        SnapshotTable snapshot = new SnapshotTable(table);
+    public SnapshotTable rebuildSnapshot(IReadableTable table, TableDesc tableDesc, String overwriteUUID) throws IOException {
+        SnapshotTable snapshot = new SnapshotTable(table, tableDesc.getIdentity());
         snapshot.setUuid(overwriteUUID);
 
         snapshot.takeSnapshot(table, tableDesc);

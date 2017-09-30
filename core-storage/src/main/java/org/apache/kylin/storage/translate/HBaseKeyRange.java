@@ -84,7 +84,7 @@ public class HBaseKeyRange implements Comparable<HBaseKeyRange> {
     public HBaseKeyRange(Collection<TblColRef> dimensionColumns, Collection<ColumnValueRange> andDimensionRanges, CubeSegment cubeSeg, CubeDesc cubeDesc) {
         this.cubeSeg = cubeSeg;
         long cuboidId = this.calculateCuboidID(cubeDesc, dimensionColumns);
-        this.cuboid = Cuboid.findById(cubeDesc, cuboidId);
+        this.cuboid = Cuboid.findById(cubeSeg, cuboidId);
         this.flatOrAndFilter = Lists.newLinkedList();
         this.flatOrAndFilter.add(andDimensionRanges);
         init(andDimensionRanges);
@@ -113,7 +113,7 @@ public class HBaseKeyRange implements Comparable<HBaseKeyRange> {
 
             TblColRef partitionDateColumnRef = cubeSeg.getCubeDesc().getModel().getPartitionDesc().getPartitionDateColumnRef();
             if (column.equals(partitionDateColumnRef)) {
-                initPartitionRange(dimRange, cubeSeg.getCubeDesc().getModel().getPartitionDesc().getPartitionDateFormat());
+                initPartitionRange(dimRange);
             }
         }
 
@@ -128,12 +128,12 @@ public class HBaseKeyRange implements Comparable<HBaseKeyRange> {
         this.fuzzyKeys = buildFuzzyKeys(fuzzyValues);
     }
 
-    private void initPartitionRange(ColumnValueRange dimRange, String partitionDateFormat) {
+    private void initPartitionRange(ColumnValueRange dimRange) {
         if (null != dimRange.getBeginValue()) {
-            this.partitionColumnStartDate = DateFormat.stringToMillis(dimRange.getBeginValue(), partitionDateFormat);
+            this.partitionColumnStartDate = DateFormat.stringToMillis(dimRange.getBeginValue());
         }
         if (null != dimRange.getEndValue()) {
-            this.partitionColumnEndDate = DateFormat.stringToMillis(dimRange.getEndValue(), partitionDateFormat);
+            this.partitionColumnEndDate = DateFormat.stringToMillis(dimRange.getEndValue());
         }
     }
 
@@ -268,6 +268,6 @@ public class HBaseKeyRange implements Comparable<HBaseKeyRange> {
     }
 
     public boolean hitSegment() {
-        return cubeSeg.getDateRangeStart() <= getPartitionColumnEndDate() && cubeSeg.getDateRangeEnd() >= getPartitionColumnStartDate();
+        return cubeSeg.getTSRange().start.v <= getPartitionColumnEndDate() && cubeSeg.getTSRange().end.v >= getPartitionColumnStartDate();
     }
 }

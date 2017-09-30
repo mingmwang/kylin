@@ -22,9 +22,12 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
+import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.mapreduce.Counters;
+import org.apache.hadoop.mapreduce.FileSystemCounter;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.TaskCounter;
+import org.apache.kylin.engine.mr.steps.FactDistinctColumnsMapper.RawDataCounter;
 import org.apache.kylin.job.constant.ExecutableConstants;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -67,7 +70,7 @@ public class HadoopCmdOutput {
 
     private String mapInputRecords;
     private String hdfsBytesWritten;
-    private String hdfsBytesRead;
+    private String rawInputBytesRead;
 
     public String getMapInputRecords() {
         return mapInputRecords;
@@ -77,8 +80,8 @@ public class HadoopCmdOutput {
         return hdfsBytesWritten;
     }
 
-    public String getHdfsBytesRead() {
-        return hdfsBytesRead;
+    public String getRawInputBytesRead() {
+        return rawInputBytesRead;
     }
 
     public void updateJobCounter() {
@@ -94,8 +97,15 @@ public class HadoopCmdOutput {
             logger.debug(counters.toString());
 
             mapInputRecords = String.valueOf(counters.findCounter(TaskCounter.MAP_INPUT_RECORDS).getValue());
-            hdfsBytesWritten = String.valueOf(counters.findCounter("FileSystemCounters", "HDFS_BYTES_WRITTEN").getValue());
-            hdfsBytesRead = String.valueOf(counters.findCounter("FileSystemCounters", "HDFS_BYTES_READ").getValue());
+            rawInputBytesRead = String.valueOf(counters.findCounter(RawDataCounter.BYTES).getValue());
+
+            String fsScheme = FileSystem.get(job.getConfiguration()).getScheme();
+            long bytesWritten = counters.findCounter(fsScheme, FileSystemCounter.BYTES_WRITTEN).getValue();
+            if (bytesWritten == 0) {
+                bytesWritten = counters.findCounter("FileSystemCounters", "HDFS_BYTES_WRITTEN").getValue();
+            }
+            hdfsBytesWritten = String.valueOf(bytesWritten);
+
         } catch (Exception e) {
             logger.error(e.getLocalizedMessage(), e);
             output.append(e.getLocalizedMessage());

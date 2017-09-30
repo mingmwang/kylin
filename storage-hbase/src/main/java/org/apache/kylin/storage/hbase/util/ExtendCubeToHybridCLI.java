@@ -18,7 +18,6 @@
 
 package org.apache.kylin.storage.hbase.util;
 
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
@@ -26,10 +25,11 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.hadoop.hbase.Cell;
 import org.apache.hadoop.hbase.CellUtil;
+import org.apache.hadoop.hbase.TableName;
 import org.apache.hadoop.hbase.client.Get;
-import org.apache.hadoop.hbase.client.HTableInterface;
 import org.apache.hadoop.hbase.client.Put;
 import org.apache.hadoop.hbase.client.Result;
+import org.apache.hadoop.hbase.client.Table;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.JsonSerializer;
 import org.apache.kylin.common.persistence.ResourceStore;
@@ -45,6 +45,7 @@ import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.IEngineAware;
 import org.apache.kylin.metadata.model.IStorageAware;
+import org.apache.kylin.metadata.model.Segments;
 import org.apache.kylin.metadata.project.ProjectInstance;
 import org.apache.kylin.metadata.project.ProjectManager;
 import org.apache.kylin.metadata.project.RealizationEntry;
@@ -60,7 +61,9 @@ import com.google.common.collect.Lists;
 
 /**
  * Created by dongli on 12/29/15.
+ * 
  */
+@Deprecated
 public class ExtendCubeToHybridCLI {
     public static final String ACL_INFO_FAMILY = "i";
     private static final String CUBE_POSTFIX = "_old";
@@ -83,6 +86,8 @@ public class ExtendCubeToHybridCLI {
     }
 
     public static void main(String[] args) throws Exception {
+        logger.warn("org.apache.kylin.storage.hbase.util.ExtendCubeToHybridCLI is deprecated, use org.apache.kylin.tool.ExtendCubeToHybridCLI instead");
+
         if (args.length != 2 && args.length != 3) {
             System.out.println("Usage: ExtendCubeToHybridCLI project cube [partition_date]");
             return;
@@ -132,8 +137,7 @@ public class ExtendCubeToHybridCLI {
         }
 
         String owner = cubeInstance.getOwner();
-        String dateFormat = dataModelDesc.getPartitionDesc().getPartitionDateFormat();
-        long partitionDate = partitionDateStr != null ? DateFormat.stringToMillis(partitionDateStr, dateFormat) : 0;
+        long partitionDate = partitionDateStr != null ? DateFormat.stringToMillis(partitionDateStr) : 0;
 
         // get new name for old cube and cube_desc
         String newCubeDescName = renameCube(cubeDesc.getName());
@@ -152,17 +156,17 @@ public class ExtendCubeToHybridCLI {
         CubeSegment currentSeg = null;
         while (segmentIterator.hasNext()) {
             currentSeg = segmentIterator.next();
-            if (partitionDateStr != null && (currentSeg.getDateRangeStart() >= partitionDate || currentSeg.getDateRangeEnd() > partitionDate)) {
+            if (partitionDateStr != null && (currentSeg.getTSRange().start.v >= partitionDate || currentSeg.getTSRange().end.v > partitionDate)) {
                 segmentIterator.remove();
                 logger.info("CubeSegment[" + currentSeg + "] was removed.");
             }
         }
-        if (partitionDateStr != null && partitionDate != currentSeg.getDateRangeEnd()) {
+        if (partitionDateStr != null && partitionDate != currentSeg.getTSRange().end.v) {
             logger.error("PartitionDate must be end date of one segment.");
             return;
         }
         if (currentSeg != null && partitionDateStr == null)
-            partitionDate = currentSeg.getDateRangeEnd();
+            partitionDate = currentSeg.getTSRange().end.v;
 
         cubeManager.createCube(newCubeInstance, projectName, owner);
         logger.info("CubeInstance was saved at: " + newCubeInstance.getResourcePath());
@@ -171,7 +175,7 @@ public class ExtendCubeToHybridCLI {
         CubeDesc newCubeDesc = CubeDesc.getCopyOf(cubeDesc);
         newCubeDesc.setName(newCubeDescName);
         newCubeDesc.updateRandomUuid();
-        newCubeDesc.init(kylinConfig, metadataManager.getAllTablesMap());
+        newCubeDesc.init(kylinConfig);
         newCubeDesc.setPartitionDateEnd(partitionDate);
         newCubeDesc.calculateSignature();
         cubeDescManager.createCubeDesc(newCubeDesc);
@@ -186,7 +190,7 @@ public class ExtendCubeToHybridCLI {
         logger.info("CubeDesc was saved at: " + cubeDesc.getResourcePath());
 
         // clear segments for old cube
-        cubeInstance.setSegments(new ArrayList<CubeSegment>());
+        cubeInstance.setSegments(new Segments<CubeSegment>());
         cubeInstance.setStatus(RealizationStatusEnum.DISABLED);
         store.putResource(cubeInstance.getResourcePath(), cubeInstance, CubeManager.CUBE_SERIALIZER);
         logger.info("CubeInstance was saved at: " + cubeInstance.getResourcePath());
@@ -232,9 +236,9 @@ public class ExtendCubeToHybridCLI {
         Serializer<ProjectInstance> projectSerializer = new JsonSerializer<ProjectInstance>(ProjectInstance.class);
         ProjectInstance project = store.getResource(projectResPath, ProjectInstance.class, projectSerializer);
         String projUUID = project.getUuid();
-        HTableInterface aclHtable = null;
+        Table aclHtable = null;
         try {
-            aclHtable = HBaseConnection.get(kylinConfig.getStorageUrl()).getTable(kylinConfig.getMetadataUrlPrefix() + "_acl");
+            aclHtable = HBaseConnection.get(kylinConfig.getStorageUrl()).getTable(TableName.valueOf(kylinConfig.getMetadataUrlPrefix() + "_acl"));
 
             // cube acl
             Result result = aclHtable.get(new Get(Bytes.toBytes(origCubeId)));
@@ -254,7 +258,6 @@ public class ExtendCubeToHybridCLI {
                     aclHtable.put(put);
                 }
             }
-            aclHtable.flushCommits();
         } finally {
             IOUtils.closeQuietly(aclHtable);
         }

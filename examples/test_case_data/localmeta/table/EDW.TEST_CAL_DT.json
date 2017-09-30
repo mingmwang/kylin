@@ -5,23 +5,28 @@
   "columns" : [ {
     "id" : "1",
     "name" : "CAL_DT",
-    "datatype" : "date"
+    "datatype" : "date",
+    "index": "T"
   }, {
     "id" : "2",
     "name" : "YEAR_BEG_DT",
-    "datatype" : "date"
+    "datatype" : "date",
+    "index": "T"
   }, {
     "id" : "3",
     "name" : "QTR_BEG_DT",
-    "datatype" : "date"
+    "datatype" : "date",
+    "index": "T"
   }, {
     "id" : "4",
     "name" : "MONTH_BEG_DT",
-    "datatype" : "date"
+    "datatype" : "date",
+    "index": "T"
   }, {
     "id" : "5",
     "name" : "WEEK_BEG_DT",
-    "datatype" : "date"
+    "datatype" : "date",
+    "index": "T"
   }, {
     "id" : "6",
     "name" : "AGE_FOR_YEAR_ID",
@@ -388,19 +393,19 @@
     "datatype" : "tinyint"
   }, {
     "id" : "97",
-    "name" : "CRE_DATE",
+    "name" : "CAL_DT_CRE_DATE",
     "datatype" : "string"
   }, {
     "id" : "98",
-    "name" : "CRE_USER",
+    "name" : "CAL_DT_CRE_USER",
     "datatype" : "string"
   }, {
     "id" : "99",
-    "name" : "UPD_DATE",
+    "name" : "CAL_DT_UPD_DATE",
     "datatype" : "string"
   }, {
     "id" : "100",
-    "name" : "UPD_USER",
+    "name" : "CAL_DT_UPD_USER",
     "datatype" : "string"
   } ],
   "database" : "edw",

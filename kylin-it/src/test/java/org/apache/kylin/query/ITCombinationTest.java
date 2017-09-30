@@ -18,19 +18,19 @@
 
 package org.apache.kylin.query;
 
-import java.sql.SQLException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Map;
 
 import org.apache.kylin.metadata.realization.RealizationType;
 import org.apache.kylin.query.routing.Candidate;
-import org.apache.kylin.storage.hbase.HBaseStorage;
-import org.apache.kylin.storage.hbase.cube.v1.coprocessor.observer.ObserverEnabler;
+import org.apache.kylin.query.routing.rules.RemoveBlackoutRealizationsRule;
 import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.runner.RunWith;
 import org.junit.runners.Parameterized;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Maps;
 
@@ -39,22 +39,22 @@ import com.google.common.collect.Maps;
 @RunWith(Parameterized.class)
 public class ITCombinationTest extends ITKylinQueryTest {
 
+    private static final Logger logger = LoggerFactory.getLogger(ITCombinationTest.class);
+
     @BeforeClass
-    public static void setUp() throws SQLException {
+    public static void setUp() {
         Map<RealizationType, Integer> priorities = Maps.newHashMap();
-        priorities.put(RealizationType.INVERTED_INDEX, 2);
         priorities.put(RealizationType.HYBRID, 0);
         priorities.put(RealizationType.CUBE, 0);
         Candidate.setPriorities(priorities);
 
-        printInfo("setUp in ITCombinationTest");
+        logger.info("setUp in ITCombinationTest");
     }
 
     @AfterClass
     public static void tearDown() {
-        printInfo("tearDown in ITCombinationTest");
+        logger.info("tearDown in ITCombinationTest");
         clean();
-        HBaseStorage.overwriteStorageQuery = null;
         Candidate.restorePriorities();
     }
 
@@ -65,30 +65,21 @@ public class ITCombinationTest extends ITKylinQueryTest {
      */
     @Parameterized.Parameters
     public static Collection<Object[]> configs() {
-        //       return Arrays.asList(new Object[][] { { "inner", "unset" }, { "left", "unset" }, { "inner", "off" }, { "left", "off" }, { "inner", "on" }, { "left", "on" }, });
-        return Arrays.asList(new Object[][] { { "inner", "on", "v2" }, { "left", "on", "v1" }, { "left", "on", "v2" } });
+        return Arrays.asList(new Object[][] { //
+                { "inner", "on", "v2" }, //
+                { "left", "on", "v2" }, //
+        });
     }
 
     public ITCombinationTest(String joinType, String coprocessorToggle, String queryEngine) throws Exception {
 
-        printInfo("Into combination join type: " + joinType + ", coprocessor toggle: " + coprocessorToggle + ", query engine: " + queryEngine);
+        logger.info("Into combination join type: " + joinType + ", coprocessor toggle: " + coprocessorToggle + ", query engine: " + queryEngine);
 
         ITKylinQueryTest.clean();
 
         ITKylinQueryTest.joinType = joinType;
         ITKylinQueryTest.setupAll();
 
-        if (coprocessorToggle.equals("on")) {
-            ObserverEnabler.forceCoprocessorOn();
-        } else if (coprocessorToggle.equals("off")) {
-            ObserverEnabler.forceCoprocessorOff();
-        } else if (coprocessorToggle.equals("unset")) {
-            // unset
-        }
-
-        if ("v1".equalsIgnoreCase(queryEngine))
-            HBaseStorage.overwriteStorageQuery = HBaseStorage.v1CubeStorageQuery;
-        else
-            HBaseStorage.overwriteStorageQuery = null;
+        RemoveBlackoutRealizationsRule.blackList.clear();
     }
 }

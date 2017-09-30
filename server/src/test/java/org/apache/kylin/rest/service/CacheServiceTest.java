@@ -18,25 +18,29 @@
 
 package org.apache.kylin.rest.service;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertTrue;
 
+import java.io.IOException;
 import java.util.Arrays;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.apache.kylin.common.KylinConfig;
-import org.apache.kylin.common.restclient.Broadcaster;
+import org.apache.kylin.common.util.CheckUtil;
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.cube.CubeDescManager;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.CubeSegment;
-import org.apache.kylin.cube.CubeUpdate;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.metadata.MetadataManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
 import org.apache.kylin.metadata.model.DataModelDesc;
-import org.apache.kylin.metadata.model.LookupDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
 import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.project.ProjectInstance;
 import org.apache.kylin.metadata.project.ProjectManager;
@@ -70,13 +74,16 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
     @BeforeClass
     public static void beforeClass() throws Exception {
         staticCreateTestMetadata();
+
+        int port = CheckUtil.randomAvailablePort(40000, 50000);
+        logger.info("Chosen port for CacheServiceTest is " + port);
         configA = KylinConfig.getInstanceFromEnv();
-        configA.setProperty("kylin.rest.servers", "localhost:7070");
-        configB = KylinConfig.getKylinConfigFromInputStream(KylinConfig.getKylinPropertiesAsInputStream());
-        configB.setProperty("kylin.rest.servers", "localhost:7070");
+        configA.setProperty("kylin.server.cluster-servers", "localhost:" + port);
+        configB = KylinConfig.createKylinConfig(configA);
+        configB.setProperty("kylin.server.cluster-servers", "localhost:" + port);
         configB.setMetadataUrl("../examples/test_metadata");
 
-        server = new Server(7070);
+        server = new Server(port);
         ServletContextHandler context = new ServletContextHandler(ServletContextHandler.SESSIONS);
         context.setContextPath("/");
         server.setHandler(context);
@@ -108,32 +115,19 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
         };
 
         serviceA.setCubeService(cubeServiceA);
-        serviceA.initCubeChangeListener();
         serviceB.setCubeService(cubeServiceB);
-        serviceB.initCubeChangeListener();
 
         context.addServlet(new ServletHolder(new BroadcasterReceiveServlet(new BroadcasterReceiveServlet.BroadcasterHandler() {
             @Override
-            public void handle(String type, String name, String event) {
-
-                Broadcaster.TYPE wipeType = Broadcaster.TYPE.getType(type);
-                Broadcaster.EVENT wipeEvent = Broadcaster.EVENT.getEvent(event);
-                final String log = "wipe cache type: " + wipeType + " event:" + wipeEvent + " name:" + name;
+            public void handle(String entity, String cacheKey, String event) {
+                Broadcaster.Event wipeEvent = Broadcaster.Event.getEvent(event);
+                final String log = "wipe cache type: " + entity + " event:" + wipeEvent + " name:" + cacheKey;
                 logger.info(log);
                 try {
-                    switch (wipeEvent) {
-                    case CREATE:
-                    case UPDATE:
-                        serviceA.rebuildCache(wipeType, name);
-                        serviceB.rebuildCache(wipeType, name);
-                        break;
-                    case DROP:
-                        serviceA.removeCache(wipeType, name);
-                        serviceB.removeCache(wipeType, name);
-                        break;
-                    default:
-                        throw new RuntimeException("invalid type:" + wipeEvent);
-                    }
+                    serviceA.notifyMetadataChange(entity, wipeEvent, cacheKey);
+                    serviceB.notifyMetadataChange(entity, wipeEvent, cacheKey);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
                 } finally {
                     counter.incrementAndGet();
                 }
@@ -152,17 +146,19 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
     @Before
     public void setUp() throws Exception {
         counter.set(0L);
-        createTestMetadata();
     }
 
     @After
     public void after() throws Exception {
-        cleanupTestMetadata();
     }
 
     private void waitForCounterAndClear(long count) {
         int retryTimes = 0;
         while ((!counter.compareAndSet(count, 0L))) {
+            // take into account wipe retry causing counter larger than count
+            if (counter.get() > count) {
+                counter.decrementAndGet();
+            }
             if (++retryTimes > 30) {
                 throw new RuntimeException("timeout");
             }
@@ -216,11 +212,11 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
         final Broadcaster broadcaster = Broadcaster.getInstance(configA);
         broadcaster.getCounterAndClear();
 
-        getStore().deleteResource("/cube/a_whole_new_cube.json");
+        getStore().deleteResource("/cube/test_kylin_cube_a_new_one.json");
 
         //create cube
 
-        final String cubeName = "a_whole_new_cube";
+        final String cubeName = "test_kylin_cube_a_new_one";
         final CubeManager cubeManager = getCubeManager(configA);
         final CubeManager cubeManagerB = getCubeManager(configB);
         final ProjectManager projectManager = getProjectManager(configA);
@@ -247,11 +243,7 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
         CubeInstance cube = cubeManager.getCube(cubeName);
         assertEquals(0, cube.getSegments().size());
         assertEquals(0, cubeManagerB.getCube(cubeName).getSegments().size());
-        CubeSegment segment = new CubeSegment();
-        segment.setName("test_segment");
-        CubeUpdate cubeBuilder = new CubeUpdate(cube);
-        cubeBuilder.setToAddSegs(segment);
-        cube = cubeManager.updateCube(cubeBuilder);
+        CubeSegment segment = cubeManager.appendSegment(cube, new TSRange(0L, 1000L));
         //one for cube update
         assertEquals(1, broadcaster.getCounterAndClear());
         waitForCounterAndClear(1);
@@ -294,7 +286,7 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
         assertTrue(cubeDescManager.getCubeDesc(cubeDescName) == null);
         assertTrue(cubeDescManagerB.getCubeDesc(cubeDescName) == null);
 
-        getStore().deleteResource("/cube/a_whole_new_cube.json");
+        getStore().deleteResource("/cube/test_kylin_cube_a_new_one.json");
     }
 
     private TableDesc createTestTableDesc() {
@@ -314,14 +306,14 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
         broadcaster.getCounterAndClear();
 
         TableDesc tableDesc = createTestTableDesc();
-        assertTrue(metadataManager.getTableDesc(tableDesc.getIdentity()) == null);
-        assertTrue(metadataManagerB.getTableDesc(tableDesc.getIdentity()) == null);
-        metadataManager.saveSourceTable(tableDesc);
+        assertTrue(metadataManager.getTableDesc(tableDesc.getIdentity(), "default") == null);
+        assertTrue(metadataManagerB.getTableDesc(tableDesc.getIdentity(), "default") == null);
+        metadataManager.saveSourceTable(tableDesc, "default");
         //only one for table insert
         assertEquals(1, broadcaster.getCounterAndClear());
         waitForCounterAndClear(1);
-        assertNotNull(metadataManager.getTableDesc(tableDesc.getIdentity()));
-        assertNotNull(metadataManagerB.getTableDesc(tableDesc.getIdentity()));
+        assertNotNull(metadataManager.getTableDesc(tableDesc.getIdentity(), "default"));
+        assertNotNull(metadataManagerB.getTableDesc(tableDesc.getIdentity(), "default"));
 
         final String dataModelName = "test_data_model";
         DataModelDesc dataModelDesc = metadataManager.getDataModelDesc("test_kylin_left_join_model_desc");
@@ -337,14 +329,13 @@ public class CacheServiceTest extends LocalFileMetadataTestCase {
         waitForCounterAndClear(2);
         assertEquals(dataModelDesc.getName(), metadataManagerB.getDataModelDesc(dataModelName).getName());
 
-        final LookupDesc[] lookups = dataModelDesc.getLookups();
+        final JoinTableDesc[] lookups = dataModelDesc.getJoinTables();
         assertTrue(lookups.length > 0);
-        dataModelDesc.setLookups(lookups);
         metadataManager.updateDataModelDesc(dataModelDesc);
         //only one for data model update
         assertEquals(1, broadcaster.getCounterAndClear());
         waitForCounterAndClear(1);
-        assertEquals(dataModelDesc.getLookups().length, metadataManagerB.getDataModelDesc(dataModelName).getLookups().length);
+        assertEquals(dataModelDesc.getJoinTables().length, metadataManagerB.getDataModelDesc(dataModelName).getJoinTables().length);
 
     }
 

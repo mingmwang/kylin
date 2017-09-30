@@ -19,19 +19,25 @@
 package org.apache.kylin.common.util;
 
 import java.io.File;
+import java.io.IOException;
 import java.lang.reflect.Method;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLDecoder;
+import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.WeakHashMap;
+
+import org.slf4j.LoggerFactory;
 
 /**
  */
 public class ClassUtil {
 
+    private static final org.slf4j.Logger logger = LoggerFactory.getLogger(ClassUtil.class);
+
     public static void addClasspath(String path) {
-        System.out.println("Adding path " + path + " to class path");
+        logger.info("Adding path " + path + " to class path");
         File file = new File(path);
 
         try {
@@ -47,31 +53,22 @@ public class ClassUtil {
         }
     }
 
-    private static final WeakHashMap<String, Class<?>> forNameCache = new WeakHashMap<>();
     private static final Map<String, String> classRenameMap;
     static {
         classRenameMap = new HashMap<>();
         classRenameMap.put("org.apache.kylin.job.common.HadoopShellExecutable", "org.apache.kylin.engine.mr.common.HadoopShellExecutable");
         classRenameMap.put("org.apache.kylin.job.common.MapReduceExecutable", "org.apache.kylin.engine.mr.common.MapReduceExecutable");
         classRenameMap.put("org.apache.kylin.job.cube.CubingJob", "org.apache.kylin.engine.mr.CubingJob");
-        classRenameMap.put("org.apache.kylin.job.invertedindex.IIJob", "org.apache.kylin.engine.mr.invertedindex.IIJob");
         classRenameMap.put("org.apache.kylin.job.cube.GarbageCollectionStep", "org.apache.kylin.storage.hbase.steps.DeprecatedGCStep");
         classRenameMap.put("org.apache.kylin.job.cube.MergeDictionaryStep", "org.apache.kylin.engine.mr.steps.MergeDictionaryStep");
         classRenameMap.put("org.apache.kylin.job.cube.UpdateCubeInfoAfterBuildStep", "org.apache.kylin.engine.mr.steps.UpdateCubeInfoAfterBuildStep");
         classRenameMap.put("org.apache.kylin.job.cube.UpdateCubeInfoAfterMergeStep", "org.apache.kylin.engine.mr.steps.UpdateCubeInfoAfterMergeStep");
+        classRenameMap.put("org.apache.kylin.rest.util.KeywordDefaultDirtyHack", "org.apache.kylin.query.util.KeywordDefaultDirtyHack");
     }
 
-    @SuppressWarnings("unchecked")
     public static <T> Class<? extends T> forName(String name, Class<T> clz) throws ClassNotFoundException {
-        String origName = name;
-
-        Class<? extends T> result = (Class<? extends T>) forNameCache.get(origName);
-        if (result == null) {
-            name = forRenamedClass(name);
-            result = (Class<? extends T>) Class.forName(name);
-            forNameCache.put(origName, result);
-        }
-        return result;
+        name = forRenamedClass(name);
+        return (Class<? extends T>) Class.forName(name);
     }
 
     private static String forRenamedClass(String name) {
@@ -90,4 +87,51 @@ public class ClassUtil {
         }
     }
 
+    public static String findContainingJar(Class<?> clazz) {
+        return findContainingJar(clazz, null);
+    }
+
+    /**
+     * Load the first jar library contains clazz with preferJarKeyword matched. If preferJarKeyword is null, just load the
+     * jar likes Hadoop Commons' ClassUtil
+     * @param clazz
+     * @param preferJarKeyWord
+     * @return
+     */
+    public static String findContainingJar(Class<?> clazz, String preferJarKeyWord) {
+        ClassLoader loader = clazz.getClassLoader();
+        String classFile = clazz.getName().replaceAll("\\.", "/") + ".class";
+
+        try {
+            Enumeration e = loader.getResources(classFile);
+
+            URL url = null;
+            do {
+                if (!e.hasMoreElements()) {
+                    if (url == null)
+                        return null;
+                    else
+                        break;
+                }
+
+                url = (URL) e.nextElement();
+                if (!"jar".equals(url.getProtocol()))
+                    break;
+                if (preferJarKeyWord != null && url.getPath().indexOf(preferJarKeyWord) != -1)
+                    break;
+                if (preferJarKeyWord == null)
+                    break;
+            } while (true);
+
+            String toReturn = url.getPath();
+            if (toReturn.startsWith("file:")) {
+                toReturn = toReturn.substring("file:".length());
+            }
+
+            toReturn = URLDecoder.decode(toReturn, "UTF-8");
+            return toReturn.replaceAll("!.*$", "");
+        } catch (IOException var6) {
+            throw new RuntimeException(var6);
+        }
+    }
 }

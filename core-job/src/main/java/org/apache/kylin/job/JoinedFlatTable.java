@@ -18,216 +18,220 @@
 
 package org.apache.kylin.job;
 
-import java.io.File;
-import java.io.IOException;
-import java.util.HashMap;
+import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 
-import javax.xml.parsers.DocumentBuilder;
-import javax.xml.parsers.DocumentBuilderFactory;
-import javax.xml.parsers.ParserConfigurationException;
-
+import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.cube.CubeSegment;
-import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.cube.model.CubeJoinedFlatTableDesc;
 import org.apache.kylin.job.engine.JobEngineConfig;
 import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
-import org.apache.kylin.metadata.model.IntermediateColumnDesc;
 import org.apache.kylin.metadata.model.JoinDesc;
-import org.apache.kylin.metadata.model.LookupDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
 import org.apache.kylin.metadata.model.PartitionDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.TableRef;
 import org.apache.kylin.metadata.model.TblColRef;
-import org.w3c.dom.Document;
-import org.w3c.dom.NodeList;
-import org.xml.sax.SAXException;
 
 /**
- * @author George Song (ysong1)
- * 
+ *
  */
 
 public class JoinedFlatTable {
 
-    public static String getTableDir(IJoinedFlatTableDesc intermediateTableDesc, String storageDfsDir) {
-        return storageDfsDir + "/" + intermediateTableDesc.getTableName();
+    public static String getTableDir(IJoinedFlatTableDesc flatDesc, String storageDfsDir) {
+        return storageDfsDir + "/" + flatDesc.getTableName();
     }
 
-    public static String generateCreateTableStatement(IJoinedFlatTableDesc intermediateTableDesc, String storageDfsDir) {
+    public static String generateHiveInitStatements(String flatTableDatabase) {
+
+        StringBuilder buffer = new StringBuilder();
+        buffer.append("USE ").append(flatTableDatabase).append(";\n");
+        return buffer.toString();
+    }
+
+    public static String generateCreateTableStatement(IJoinedFlatTableDesc flatDesc, String storageDfsDir) {
+        return generateCreateTableStatement(flatDesc, storageDfsDir, "SEQUENCEFILE");
+    }
+
+    public static String generateCreateTableStatement(IJoinedFlatTableDesc flatDesc, String storageDfsDir,
+            String format) {
         StringBuilder ddl = new StringBuilder();
 
-        ddl.append("CREATE EXTERNAL TABLE IF NOT EXISTS " + intermediateTableDesc.getTableName() + "\n");
+        ddl.append("CREATE EXTERNAL TABLE IF NOT EXISTS " + flatDesc.getTableName() + "\n");
 
         ddl.append("(" + "\n");
-        for (int i = 0; i < intermediateTableDesc.getColumnList().size(); i++) {
-            IntermediateColumnDesc col = intermediateTableDesc.getColumnList().get(i);
+        for (int i = 0; i < flatDesc.getAllColumns().size(); i++) {
+            TblColRef col = flatDesc.getAllColumns().get(i);
             if (i > 0) {
                 ddl.append(",");
             }
-            ddl.append(colName(col.getCanonicalName()) + " " + getHiveDataType(col.getDataType()) + "\n");
+            ddl.append(colName(col) + " " + getHiveDataType(col.getDatatype()) + "\n");
         }
         ddl.append(")" + "\n");
-
-        ddl.append("ROW FORMAT DELIMITED FIELDS TERMINATED BY '\\177'" + "\n");
-        ddl.append("STORED AS SEQUENCEFILE" + "\n");
-        ddl.append("LOCATION '" + getTableDir(intermediateTableDesc, storageDfsDir) + "';").append("\n");
-        // ddl.append("TBLPROPERTIES ('serialization.null.format'='\\\\N')" +
-        // ";\n");
+        if ("TEXTFILE".equals(format)) {
+            ddl.append("ROW FORMAT DELIMITED FIELDS TERMINATED BY ','" + "\n");
+        }
+        ddl.append("STORED AS " + format + "\n");
+        ddl.append("LOCATION '" + getTableDir(flatDesc, storageDfsDir) + "';").append("\n");
         return ddl.toString();
     }
 
-    public static String generateDropTableStatement(IJoinedFlatTableDesc intermediateTableDesc) {
+    public static String generateDropTableStatement(IJoinedFlatTableDesc flatDesc) {
         StringBuilder ddl = new StringBuilder();
-        ddl.append("DROP TABLE IF EXISTS " + intermediateTableDesc.getTableName() + ";").append("\n");
+        ddl.append("DROP TABLE IF EXISTS " + flatDesc.getTableName() + ";").append("\n");
         return ddl.toString();
     }
 
-    public static String generateInsertDataStatement(IJoinedFlatTableDesc intermediateTableDesc, JobEngineConfig engineConfig) throws IOException {
-        StringBuilder sql = new StringBuilder();
+    public static String generateInsertDataStatement(IJoinedFlatTableDesc flatDesc) {
+        CubeSegment segment = ((CubeSegment) flatDesc.getSegment());
+        KylinConfig kylinConfig;
+        if (null == segment) {
+            kylinConfig = KylinConfig.getInstanceFromEnv();
+        } else {
+            kylinConfig = ((CubeSegment) flatDesc.getSegment()).getConfig();
+        }
 
-        File hadoopPropertiesFile = new File(engineConfig.getHiveConfFilePath());
-
-        if (hadoopPropertiesFile.exists()) {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            DocumentBuilder builder;
-            Document doc;
+        if (kylinConfig.isAdvancedFlatTableUsed()) {
             try {
-                builder = factory.newDocumentBuilder();
-                doc = builder.parse(hadoopPropertiesFile);
-                NodeList nl = doc.getElementsByTagName("property");
-                for (int i = 0; i < nl.getLength(); i++) {
-                    String name = doc.getElementsByTagName("name").item(i).getFirstChild().getNodeValue();
-                    String value = doc.getElementsByTagName("value").item(i).getFirstChild().getNodeValue();
-                    if (name.equals("tmpjars") == false) {
-                        sql.append("SET " + name + "=" + value + ";").append("\n");
-                    }
-                }
-
-            } catch (ParserConfigurationException e) {
-                throw new IOException(e);
-            } catch (SAXException e) {
-                throw new IOException(e);
+                Class advancedFlatTable = Class.forName(kylinConfig.getAdvancedFlatTableClass());
+                Method method = advancedFlatTable.getMethod("generateInsertDataStatement", IJoinedFlatTableDesc.class,
+                        JobEngineConfig.class);
+                return (String) method.invoke(null, flatDesc);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
             }
         }
 
-        sql.append("INSERT OVERWRITE TABLE " + intermediateTableDesc.getTableName() + " " + generateSelectDataStatement(intermediateTableDesc) + ";").append("\n");
-
-        return sql.toString();
+        return "INSERT OVERWRITE TABLE " + flatDesc.getTableName() + " " + generateSelectDataStatement(flatDesc)
+                + ";\n";
     }
 
-    public static String generateSelectDataStatement(IJoinedFlatTableDesc intermediateTableDesc) {
+    public static String generateInsertPartialDataStatement(IJoinedFlatTableDesc flatDesc) {
+        return "INSERT OVERWRITE TABLE " + flatDesc.getTableName() + " " + generateSelectDataStatement(flatDesc)
+                + ";\n";
+    }
+
+    public static String generateSelectDataStatement(IJoinedFlatTableDesc flatDesc) {
+        return generateSelectDataStatement(flatDesc, false, null);
+    }
+
+    public static String generateSelectDataStatement(IJoinedFlatTableDesc flatDesc, boolean singleLine,
+            String[] skipAs) {
+        final String sep = singleLine ? " " : "\n";
+        final List<String> skipAsList = (skipAs == null) ? new ArrayList<String>() : Arrays.asList(skipAs);
+
         StringBuilder sql = new StringBuilder();
-        sql.append("SELECT" + "\n");
-        String tableAlias;
-        Map<String, String> tableAliasMap = buildTableAliasMap(intermediateTableDesc.getDataModel());
-        for (int i = 0; i < intermediateTableDesc.getColumnList().size(); i++) {
-            IntermediateColumnDesc col = intermediateTableDesc.getColumnList().get(i);
+        sql.append("SELECT" + sep);
+
+        for (int i = 0; i < flatDesc.getAllColumns().size(); i++) {
+            TblColRef col = flatDesc.getAllColumns().get(i);
             if (i > 0) {
                 sql.append(",");
             }
-            tableAlias = tableAliasMap.get(col.getTableName());
-            sql.append(tableAlias + "." + col.getColumnName() + "\n");
+            String colTotalName = String.format("%s.%s", col.getTableRef().getTableName(), col.getName());
+            if (skipAsList.contains(colTotalName)) {
+                sql.append(col.getExpressionInSourceDB() + sep);
+            } else {
+                sql.append(col.getExpressionInSourceDB() + " as " + colName(col) + sep);
+            }
         }
-        appendJoinStatement(intermediateTableDesc, sql, tableAliasMap);
-        appendWhereStatement(intermediateTableDesc, sql, tableAliasMap);
+        appendJoinStatement(flatDesc, sql, singleLine);
+        appendWhereStatement(flatDesc, sql, singleLine);
         return sql.toString();
     }
 
-    private static Map<String, String> buildTableAliasMap(DataModelDesc dataModelDesc) {
-        Map<String, String> tableAliasMap = new HashMap<String, String>();
-
-        addTableAlias(dataModelDesc.getFactTable(), tableAliasMap);
-
-        for (LookupDesc lookupDesc : dataModelDesc.getLookups()) {
-            JoinDesc join = lookupDesc.getJoin();
-            if (join != null) {
-                addTableAlias(lookupDesc.getTable(), tableAliasMap);
-            }
-        }
-        return tableAliasMap;
+    public static String generateCountDataStatement(IJoinedFlatTableDesc flatDesc, final String outputDir) {
+        final StringBuilder sql = new StringBuilder();
+        final TableRef rootTbl = flatDesc.getDataModel().getRootFactTable();
+        sql.append("dfs -mkdir -p " + outputDir + ";\n");
+        sql.append("INSERT OVERWRITE DIRECTORY '" + outputDir + "' SELECT count(*) FROM " + rootTbl.getTableIdentity()
+                + " " + rootTbl.getAlias() + "\n");
+        appendWhereStatement(flatDesc, sql);
+        return sql.toString();
     }
 
-    // The table alias used to be "FACT_TABLE" and "LOOKUP_#", but that's too unpredictable
-    // for those who want to write a filter. (KYLIN-900)
-    // Also yet don't support joining the same table more than once, since table name is the map key.
-    private static void addTableAlias(String table, Map<String, String> tableAliasMap) {
-        String alias;
-        int cut = table.lastIndexOf('.');
-        if (cut < 0)
-            alias = table;
-        else
-            alias = table.substring(cut + 1);
+    public static void appendJoinStatement(IJoinedFlatTableDesc flatDesc, StringBuilder sql, boolean singleLine) {
+        final String sep = singleLine ? " " : "\n";
+        Set<TableRef> dimTableCache = new HashSet<>();
 
-        tableAliasMap.put(table, alias);
-    }
+        DataModelDesc model = flatDesc.getDataModel();
+        TableRef rootTable = model.getRootFactTable();
+        sql.append("FROM " + rootTable.getTableIdentity() + " as " + rootTable.getAlias() + " " + sep);
 
-    private static void appendJoinStatement(IJoinedFlatTableDesc intermediateTableDesc, StringBuilder sql, Map<String, String> tableAliasMap) {
-        Set<String> dimTableCache = new HashSet<String>();
-
-        DataModelDesc dataModelDesc = intermediateTableDesc.getDataModel();
-        String factTableName = dataModelDesc.getFactTable();
-        String factTableAlias = tableAliasMap.get(factTableName);
-        sql.append("FROM " + factTableName + " as " + factTableAlias + " \n");
-
-        for (LookupDesc lookupDesc : dataModelDesc.getLookups()) {
+        for (JoinTableDesc lookupDesc : model.getJoinTables()) {
             JoinDesc join = lookupDesc.getJoin();
             if (join != null && join.getType().equals("") == false) {
                 String joinType = join.getType().toUpperCase();
-                String dimTableName = lookupDesc.getTable();
-                if (!dimTableCache.contains(dimTableName)) {
+                TableRef dimTable = lookupDesc.getTableRef();
+                if (!dimTableCache.contains(dimTable)) {
                     TblColRef[] pk = join.getPrimaryKeyColumns();
                     TblColRef[] fk = join.getForeignKeyColumns();
                     if (pk.length != fk.length) {
                         throw new RuntimeException("Invalid join condition of lookup table:" + lookupDesc);
                     }
-                    sql.append(joinType + " JOIN " + dimTableName + " as " + tableAliasMap.get(dimTableName) + "\n");
+                    sql.append(joinType + " JOIN " + dimTable.getTableIdentity() + " as " + dimTable.getAlias() + sep);
                     sql.append("ON ");
                     for (int i = 0; i < pk.length; i++) {
                         if (i > 0) {
                             sql.append(" AND ");
                         }
-                        sql.append(factTableAlias + "." + fk[i].getName() + " = " + tableAliasMap.get(dimTableName) + "." + pk[i].getName());
+                        sql.append(fk[i].getIdentity() + " = " + pk[i].getIdentity());
                     }
-                    sql.append("\n");
+                    sql.append(sep);
 
-                    dimTableCache.add(dimTableName);
+                    dimTableCache.add(dimTable);
                 }
             }
         }
     }
 
-    private static void appendWhereStatement(IJoinedFlatTableDesc intermediateTableDesc, StringBuilder sql, Map<String, String> tableAliasMap) {
-        if (!(intermediateTableDesc instanceof CubeJoinedFlatTableDesc)) {
-            return;//TODO: for now only cube segments support filter and partition
+    private static void appendDistributeStatement(StringBuilder sql, TblColRef redistCol) {
+        if (redistCol != null) {
+            sql.append(" DISTRIBUTE BY ").append(colName(redistCol)).append(";\n");
+        } else {
+            sql.append(" DISTRIBUTE BY RAND()").append(";\n");
         }
-        CubeJoinedFlatTableDesc desc = (CubeJoinedFlatTableDesc) intermediateTableDesc;
+    }
+
+    private static void appendClusterStatement(StringBuilder sql, TblColRef clusterCol) {
+        sql.append(" CLUSTER BY ").append(colName(clusterCol)).append(";\n");
+    }
+
+    private static void appendWhereStatement(IJoinedFlatTableDesc flatDesc, StringBuilder sql) {
+        appendWhereStatement(flatDesc, sql, false);
+    }
+
+    private static void appendWhereStatement(IJoinedFlatTableDesc flatDesc, StringBuilder sql, boolean singleLine) {
+        final String sep = singleLine ? " " : "\n";
 
         boolean hasCondition = false;
         StringBuilder whereBuilder = new StringBuilder();
         whereBuilder.append("WHERE");
 
-        CubeDesc cubeDesc = desc.getCubeDesc();
-        DataModelDesc model = cubeDesc.getModel();
+        DataModelDesc model = flatDesc.getDataModel();
 
         if (model.getFilterCondition() != null && model.getFilterCondition().equals("") == false) {
             whereBuilder.append(" (").append(model.getFilterCondition()).append(") ");
             hasCondition = true;
         }
 
-        CubeSegment cubeSegment = desc.getCubeSegment();
-
-        if (null != cubeSegment) {
+        if (flatDesc.getSegment() != null) {
             PartitionDesc partDesc = model.getPartitionDesc();
-            long dateStart = cubeSegment.getDateRangeStart();
-            long dateEnd = cubeSegment.getDateRangeEnd();
+            if (partDesc != null && partDesc.getPartitionDateColumn() != null) {
+                SegmentRange segRange = flatDesc.getSegRange();
 
-            if (!(dateStart == 0 && dateEnd == Long.MAX_VALUE)) {
-                whereBuilder.append(hasCondition ? " AND (" : " (");
-                whereBuilder.append(partDesc.getPartitionConditionBuilder().buildDateRangeCondition(partDesc, dateStart, dateEnd, tableAliasMap));
-                whereBuilder.append(")\n");
-                hasCondition = true;
+                if (segRange != null && !segRange.isInfinite()) {
+                    whereBuilder.append(hasCondition ? " AND (" : " (");
+                    whereBuilder.append(
+                            partDesc.getPartitionConditionBuilder().buildDateRangeCondition(partDesc, segRange));
+                    whereBuilder.append(")" + sep);
+                    hasCondition = true;
+                }
             }
         }
 
@@ -236,8 +240,8 @@ public class JoinedFlatTable {
         }
     }
 
-    private static String colName(String canonicalColName) {
-        return canonicalColName.replace(".", "_");
+    private static String colName(TblColRef col) {
+        return col.getTableAlias() + "_" + col.getName();
     }
 
     private static String getHiveDataType(String javaDataType) {
@@ -245,6 +249,21 @@ public class JoinedFlatTable {
         hiveDataType = javaDataType.toLowerCase().startsWith("integer") ? "int" : hiveDataType;
 
         return hiveDataType.toLowerCase();
+    }
+
+    public static String generateRedistributeFlatTableStatement(IJoinedFlatTableDesc flatDesc) {
+        final String tableName = flatDesc.getTableName();
+        StringBuilder sql = new StringBuilder();
+        sql.append("INSERT OVERWRITE TABLE " + tableName + " SELECT * FROM " + tableName);
+
+        TblColRef clusterCol = flatDesc.getClusterBy();
+        if (clusterCol != null) {
+            appendClusterStatement(sql, clusterCol);
+        } else {
+            appendDistributeStatement(sql, flatDesc.getDistributedBy());
+        }
+
+        return sql.toString();
     }
 
 }

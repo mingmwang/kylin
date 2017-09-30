@@ -25,6 +25,7 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.kylin.common.util.ByteArray;
+import org.apache.kylin.common.util.ImmutableBitSet;
 import org.apache.kylin.gridtable.GTInfo;
 import org.apache.kylin.gridtable.GTRecord;
 import org.apache.kylin.gridtable.GTScanRequest;
@@ -34,12 +35,21 @@ import org.apache.kylin.gridtable.IGTWriter;
 
 public class GTSimpleMemStore implements IGTStore {
 
-    final GTInfo info;
-    final List<byte[]> rowList;
+    final protected GTInfo info;
+    final protected List<byte[]> rowList;
+
+    protected GTSimpleMemStore(GTInfo info, List<byte[]> rowList) {
+        this.info = info;
+        this.rowList = rowList;
+    }
 
     public GTSimpleMemStore(GTInfo info) {
         this.info = info;
         this.rowList = new ArrayList<byte[]>();
+    }
+
+    public List<byte[]> getRowList() {
+        return rowList;
     }
 
     @Override
@@ -69,7 +79,7 @@ public class GTSimpleMemStore implements IGTStore {
     private class Writer implements IGTWriter {
         @Override
         public void write(GTRecord r) throws IOException {
-            ByteArray byteArray = r.exportColumns(info.getAllColumns()).copy();
+            ByteArray byteArray = r.exportColumns(info.getAllColumns());
             assert byteArray.offset() == 0;
             assert byteArray.array().length == byteArray.length();
             rowList.add(byteArray.array());
@@ -80,20 +90,20 @@ public class GTSimpleMemStore implements IGTStore {
         }
     }
 
+    protected ImmutableBitSet getColumns() {
+        return info.getAllColumns();
+    }
+
     @Override
     public IGTScanner scan(GTScanRequest scanRequest) {
 
         return new IGTScanner() {
-            int count;
+            @SuppressWarnings("unused")
+            long count;
 
             @Override
             public GTInfo getInfo() {
                 return info;
-            }
-
-            @Override
-            public int getScannedRowCount() {
-                return count;
             }
 
             @Override
@@ -115,7 +125,7 @@ public class GTSimpleMemStore implements IGTStore {
                     @Override
                     public GTRecord next() {
                         byte[] bytes = it.next();
-                        oneRecord.loadColumns(info.getAllColumns(), ByteBuffer.wrap(bytes));
+                        oneRecord.loadColumns(getColumns(), ByteBuffer.wrap(bytes));
                         count++;
                         return oneRecord;
                     }

@@ -65,6 +65,7 @@ public class OLAPSortRel extends Sort implements OLAPRel {
 
     @Override
     public void implementOLAP(OLAPImplementor implementor) {
+        implementor.fixSharedOlapTableScan(this);
         implementor.visitChild(getInput(), this);
 
         this.context = implementor.getContext();
@@ -85,16 +86,13 @@ public class OLAPSortRel extends Sort implements OLAPRel {
         // Occurs in sub-query like "select ... from (...) inner join (...) order by ..."
         if (this.context.realization == null)
             return;
-        
+
         for (RelFieldCollation fieldCollation : this.collation.getFieldCollations()) {
             int index = fieldCollation.getFieldIndex();
             SQLDigest.OrderEnum order = getOrderEnum(fieldCollation.getDirection());
             OLAPRel olapChild = (OLAPRel) this.getInput();
             TblColRef orderCol = olapChild.getColumnRowType().getAllColumns().get(index);
-            MeasureDesc measure = findMeasure(orderCol);
-            if (measure != null) {
-                this.context.addSort(measure, order);
-            }
+            this.context.addSort(orderCol, order);
             this.context.storageContext.markSort();
         }
 
@@ -110,6 +108,7 @@ public class OLAPSortRel extends Sort implements OLAPRel {
         }
     }
 
+    @SuppressWarnings("unused")
     private MeasureDesc findMeasure(TblColRef col) {
         for (MeasureDesc measure : this.context.realization.getMeasures()) {
             if (col.getName().equals(measure.getFunction().getRewriteFieldName())) {

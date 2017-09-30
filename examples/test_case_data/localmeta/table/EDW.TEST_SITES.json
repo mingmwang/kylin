@@ -5,11 +5,13 @@
   "columns" : [ {
     "id" : "1",
     "name" : "SITE_ID",
-    "datatype" : "int"
+    "datatype" : "int",
+    "index": "T"
   }, {
     "id" : "2",
     "name" : "SITE_NAME",
-    "datatype" : "string"
+    "datatype" : "string",
+    "index": "T"
   }, {
     "id" : "3",
     "name" : "SITE_DOMAIN_CODE",
@@ -25,14 +27,15 @@
   }, {
     "id" : "6",
     "name" : "SITE_CNTRY_ID",
-    "datatype" : "int"
+    "datatype" : "int",
+    "index": "T"
   }, {
     "id" : "7",
     "name" : "CRE_DATE",
     "datatype" : "string"
   }, {
     "id" : "8",
-    "name" : "UPD_DATE",
+    "name" : "SITES_UPD_DATE",
     "datatype" : "string"
   }, {
     "id" : "9",
@@ -40,7 +43,7 @@
     "datatype" : "string"
   }, {
     "id" : "10",
-    "name" : "UPD_USER",
+    "name" : "SITES_UPD_USER",
     "datatype" : "string"
   } ],
   "database" : "edw",

@@ -17,8 +17,19 @@
 # limitations under the License.
 #
 
+source $(cd -P -- "$(dirname -- "$0")" && pwd -P)/header.sh
+
+echo Retrieving hbase dependency...
+
 hbase_classpath=`hbase classpath`
-arr=(`echo $hbase_classpath | cut -d ":"  --output-delimiter=" " -f 1-`)
+
+# special handling for Amazon EMR, to prevent re-init of hbase-setenv
+is_aws=`uname -r | grep amzn`
+if [ -n "$is_aws" ] && [ -d "/usr/lib/oozie/lib" ]; then
+    export HBASE_ENV_INIT="true"
+fi
+
+arr=(`echo $hbase_classpath | cut -d ":" -f 1- | sed 's/:/ /g'`)
 hbase_common_path=
 for data in ${arr[@]}
 do
@@ -31,10 +42,9 @@ done
 
 if [ -z "$hbase_common_path" ]
 then
-    echo "hbase-common lib not found"
-    exit 1
+    quit "hbase-common lib not found"
 fi
 
 hbase_dependency=${hbase_common_path}
-echo "hbase dependency: $hbase_dependency"
+verbose "hbase dependency: $hbase_dependency"
 export hbase_dependency

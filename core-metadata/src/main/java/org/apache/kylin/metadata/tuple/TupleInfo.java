@@ -93,10 +93,12 @@ public class TupleInfo {
         else
             columns.add(index, col);
 
-        if (dataTypeNames.size() > index)
-            dataTypeNames.set(index, col.getType().getName());
-        else
-            dataTypeNames.add(index, col.getType().getName());
+        if (col != null) {
+            if (dataTypeNames.size() > index)
+                dataTypeNames.set(index, col.getColumnDesc().getUpgradedType().getName());
+            else
+                dataTypeNames.add(index, col.getColumnDesc().getUpgradedType().getName());
+        }
     }
 
     public List<String> getAllFields() {

@@ -18,20 +18,17 @@
 
 package org.apache.kylin.engine.mr.steps;
 
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
+import java.io.IOException;
+
 import org.apache.hadoop.mapreduce.MapContext;
 import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.engine.mr.ByteArrayWritable;
 
-import java.io.IOException;
-
 /**
  */
 public class MapContextGTRecordWriter extends KVGTRecordWriter {
 
-    private static final Log logger = LogFactory.getLog(MapContextGTRecordWriter.class);
     protected MapContext<?, ?, ByteArrayWritable, ByteArrayWritable> mapContext;
 
     public MapContextGTRecordWriter(MapContext<?, ?, ByteArrayWritable, ByteArrayWritable> mapContext, CubeDesc cubeDesc, CubeSegment cubeSegment) {
@@ -44,6 +41,7 @@ public class MapContextGTRecordWriter extends KVGTRecordWriter {
         try {
             mapContext.write(key, value);
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             throw new IOException(e);
         }
     }

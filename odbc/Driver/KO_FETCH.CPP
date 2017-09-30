@@ -146,6 +146,8 @@ RETCODE _SQLColAttribute_basic ( SQLHSTMT pStmt,
         return SQL_ERROR;
     }
 
+    __ODBCLOG ( _ODBCLogMsg ( LogLevel_DEBUG, "SQLColAttribute_basic called, ColNum: %d, FldID: %d", pColNum, pFldID ) );
+
     // get value from descriptor as per field type
     switch ( pFldID )
     {
@@ -696,10 +698,17 @@ RETCODE SQL_API SQLPutData ( SQLHSTMT pStmt,
 
 RETCODE SQL_API SQLMoreResults ( HSTMT pStmt )
 {
-    __ODBCLOG ( _ODBCLogMsg ( LogLevel_DEBUG, "SQLMoreResults called" ) );
-
     pODBCStmt odbcStmt = ( pODBCStmt )pStmt;
-    if ( odbcStmt -> IRD . RowDesc != NULL )
+
+    __ODBCLOG ( _ODBCLogMsg ( LogLevel_DEBUG, "SQLMoreResults called, stmt handle %d with start-row %d and end-row %d, next handle is %d", 
+        (long) odbcStmt, odbcStmt->CurRowsetStartRowPos, odbcStmt->CurRowsetEndRowPos, (long) odbcStmt -> Next) );
+
+    // check if stmt been released already
+    if (( ! odbcStmt -> Prepared) || ( ! odbcStmt -> Next ))
+    {
+	return SQL_NO_DATA;
+    }
+    else if ( odbcStmt -> IRD . RowDesc != NULL )
     {
         // ------- THIS CASE SHOULD NOT OCCUR ----------
         // check if position is currently unknown

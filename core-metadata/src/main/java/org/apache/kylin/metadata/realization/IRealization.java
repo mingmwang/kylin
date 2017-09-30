@@ -19,14 +19,17 @@
 package org.apache.kylin.metadata.realization;
 
 import java.util.List;
+import java.util.Set;
 
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.IStorageAware;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 
 public interface IRealization extends IStorageAware {
-    
+
     /**
      * Given the features of a query, check how capable the realization is to answer the query.
      */
@@ -37,11 +40,11 @@ public interface IRealization extends IStorageAware {
      */
     public RealizationType getType();
 
-    public DataModelDesc getDataModelDesc();
+    public DataModelDesc getModel();
 
-    public String getFactTable();
+    public Set<TblColRef> getAllColumns();
 
-    public List<TblColRef> getAllColumns();
+    public Set<ColumnDesc> getAllColumnDescs();
 
     public List<TblColRef> getAllDimensions();
 
@@ -57,5 +60,7 @@ public interface IRealization extends IStorageAware {
 
     public long getDateRangeEnd();
 
-    public String getModelName();
+    public boolean supportsLimitPushDown();
+
+    public KylinConfig getConfig();
 }

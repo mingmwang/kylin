@@ -56,7 +56,7 @@ public class BatchMergeJobBuilder extends JobBuilderSupport {
         final String cuboidRootPath = getCuboidRootPath(jobId);
 
         final List<CubeSegment> mergingSegments = cubeSegment.getCubeInstance().getMergingSegments(cubeSegment);
-        Preconditions.checkState(mergingSegments.size() > 1, "there should be more than 2 segments to merge");
+        Preconditions.checkState(mergingSegments.size() > 1, "there should be more than 2 segments to merge, target segment " + cubeSegment);
         final List<String> mergingSegmentIds = Lists.newArrayList();
         final List<String> mergingCuboidPaths = Lists.newArrayList();
         for (CubeSegment merging : mergingSegments) {
@@ -84,9 +84,9 @@ public class BatchMergeJobBuilder extends JobBuilderSupport {
         mergeCuboidDataStep.setName(ExecutableConstants.STEP_NAME_MERGE_CUBOID);
         StringBuilder cmd = new StringBuilder();
 
-        appendMapReduceParameters(cmd, seg.getRealization().getDataModelDesc());
+        appendMapReduceParameters(cmd);
         appendExecCmdParameters(cmd, BatchConstants.ARG_CUBE_NAME, seg.getCubeInstance().getName());
-        appendExecCmdParameters(cmd, BatchConstants.ARG_SEGMENT_NAME, seg.getName());
+        appendExecCmdParameters(cmd, BatchConstants.ARG_SEGMENT_ID, seg.getUuid());
         appendExecCmdParameters(cmd, BatchConstants.ARG_INPUT, inputPath);
         appendExecCmdParameters(cmd, BatchConstants.ARG_OUTPUT, outputPath);
         appendExecCmdParameters(cmd, BatchConstants.ARG_JOB_NAME, "Kylin_Merge_Cuboid_" + seg.getCubeInstance().getName() + "_Step");

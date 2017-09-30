@@ -18,7 +18,7 @@
 
 package org.apache.kylin.cube.kv;
 
-import org.apache.kylin.dimension.Dictionary;
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.dimension.DictionaryDimEnc;
 import org.apache.kylin.dimension.DimensionEncoding;
 import org.apache.kylin.dimension.IDimensionEncodingMap;
@@ -29,7 +29,7 @@ import org.apache.kylin.metadata.model.TblColRef;
  *
  * @author yangli9
  */
-public class RowKeyColumnIO {
+public class RowKeyColumnIO implements java.io.Serializable {
 
     //private static final Logger logger = LoggerFactory.getLogger(RowKeyColumnIO.class);
 
@@ -47,12 +47,12 @@ public class RowKeyColumnIO {
         return dimEncMap.getDictionary(col);
     }
 
-    public void writeColumn(TblColRef col, byte[] value, int valueLen, int roundingFlag, byte defaultValue, byte[] output, int outputOffset) {
+    public void writeColumn(TblColRef col, String value, int roundingFlag, byte defaultValue, byte[] output, int outputOffset) {
         DimensionEncoding dimEnc = dimEncMap.get(col);
         if (dimEnc instanceof DictionaryDimEnc)
             dimEnc = ((DictionaryDimEnc) dimEnc).copy(roundingFlag, defaultValue);
 
-        dimEnc.encode(value, valueLen, output, outputOffset);
+        dimEnc.encode(value, output, outputOffset);
     }
 
     public String readColumnString(TblColRef col, byte[] bytes, int offset, int length) {

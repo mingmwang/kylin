@@ -23,17 +23,25 @@ import static org.junit.Assert.assertEquals;
 import java.math.BigDecimal;
 import java.nio.ByteBuffer;
 
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
 /**
  */
-public class BigDecimalSerializerTest {
+public class BigDecimalSerializerTest extends LocalFileMetadataTestCase {
 
     private static BigDecimalSerializer bigDecimalSerializer;
 
+    @AfterClass
+    public static void after() throws Exception {
+        cleanAfterClass();
+    }
+
     @BeforeClass
     public static void beforeClass() {
+        staticCreateTestMetadata();
         bigDecimalSerializer = new BigDecimalSerializer(DataType.getType("decimal"));
     }
 

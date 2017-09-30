@@ -18,22 +18,21 @@
 
 package org.apache.kylin.cube;
 
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Set;
 
+import org.apache.commons.lang.StringUtils;
 import org.apache.kylin.cube.model.CubeDesc;
-import org.apache.kylin.cube.model.DimensionDesc;
 import org.apache.kylin.measure.MeasureType;
 import org.apache.kylin.measure.basic.BasicMeasureType;
 import org.apache.kylin.metadata.filter.UDF.MassInTupleFilter;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.IStorageAware;
-import org.apache.kylin.metadata.model.JoinDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
+import org.apache.kylin.metadata.model.ParameterDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.realization.CapabilityResult;
 import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
@@ -41,6 +40,7 @@ import org.apache.kylin.metadata.realization.SQLDigest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 
 /**
@@ -52,12 +52,7 @@ public class CubeCapabilityChecker {
         CapabilityResult result = new CapabilityResult();
         result.capable = false;
 
-        // match joins
-        boolean isJoinMatch = isJoinMatch(digest.joinDescs, cube);
-        if (!isJoinMatch) {
-            logger.info("Exclude cube " + cube.getName() + " because unmatched joins");
-            return result;
-        }
+        // match joins is ensured at model select
 
         // dimensions & measures
         Collection<TblColRef> dimensionColumns = getDimensionColumns(digest);
@@ -66,30 +61,90 @@ public class CubeCapabilityChecker {
         Collection<FunctionDesc> unmatchedAggregations = unmatchedAggregations(aggrFunctions, cube);
 
         // try custom measure types
-        // in RAW query, unmatchedDimensions and unmatchedAggregations will null, so can't chose RAW cube well!
-        //        if (!unmatchedDimensions.isEmpty() || !unmatchedAggregations.isEmpty()) {
         tryCustomMeasureTypes(unmatchedDimensions, unmatchedAggregations, digest, cube, result);
-        //        }
 
-        // try dimension-as-measure
-        if (!unmatchedAggregations.isEmpty()) {
-            tryDimensionAsMeasures(unmatchedAggregations, digest, cube, result);
+        //more tricks
+        String rootFactTable = cube.getRootFactTable();
+        if (rootFactTable.equals(digest.factTable)) {
+            //for query-on-facttable
+            //1. dimension as measure
+
+            if (!unmatchedAggregations.isEmpty()) {
+                tryDimensionAsMeasures(unmatchedAggregations, result,
+                        cube.getDescriptor().listDimensionColumnsIncludingDerived());
+            }
+        } else {
+            //for non query-on-facttable 
+            if (cube.getSegments().get(0).getSnapshots().containsKey(digest.factTable)) {
+
+                Set<TblColRef> dimCols = Sets.newHashSet(cube.getModel().findFirstTable(digest.factTable).getColumns());
+
+                //1. all aggregations on lookup table can be done. For distinct count, mark them all DimensionAsMeasures
+                // so that the measure has a chance to be upgraded to DimCountDistinctMeasureType in org.apache.kylin.metadata.model.FunctionDesc#reInitMeasureType
+                if (!unmatchedAggregations.isEmpty()) {
+                    Iterator<FunctionDesc> itr = unmatchedAggregations.iterator();
+                    while (itr.hasNext()) {
+                        FunctionDesc functionDesc = itr.next();
+                        if (dimCols.containsAll(functionDesc.getParameter().getColRefs())) {
+                            itr.remove();
+                        }
+                    }
+                }
+                tryDimensionAsMeasures(Lists.newArrayList(aggrFunctions), result, dimCols);
+
+                //2. more "dimensions" contributed by snapshot
+                if (!unmatchedDimensions.isEmpty()) {
+                    unmatchedDimensions.removeAll(dimCols);
+                }
+            } else {
+                logger.info("cube {} does not touch lookup table {} at all", cube.getName(), digest.factTable);
+                return result;
+            }
         }
 
         if (!unmatchedDimensions.isEmpty()) {
-            logger.info("Exclude cube " + cube.getName() + " because unmatched dimensions");
+            logger.info("Exclude cube " + cube.getName() + " because unmatched dimensions: " + unmatchedDimensions);
+            result.incapableCause = CapabilityResult.IncapableCause.unmatchedDimensions(unmatchedDimensions);
             return result;
         }
 
         if (!unmatchedAggregations.isEmpty()) {
-            logger.info("Exclude cube " + cube.getName() + " because unmatched aggregations");
+            logger.info("Exclude cube " + cube.getName() + " because unmatched aggregations: " + unmatchedAggregations);
+            result.incapableCause = CapabilityResult.IncapableCause.unmatchedAggregations(unmatchedAggregations);
             return result;
         }
 
-        if (cube.getStorageType() == IStorageAware.ID_HBASE && MassInTupleFilter.containsMassInTupleFilter(digest.filter)) {
-            logger.info("Exclude cube " + cube.getName() + " because only v2 storage + v2 query engine supports massin");
+        if (cube.getStorageType() == IStorageAware.ID_HBASE
+                && MassInTupleFilter.containsMassInTupleFilter(digest.filter)) {
+            logger.info(
+                    "Exclude cube " + cube.getName() + " because only v2 storage + v2 query engine supports massin");
+            result.incapableCause = CapabilityResult.IncapableCause.create(CapabilityResult.IncapableType.UNSUPPORT_MASSIN);
             return result;
+        }
 
+        if (digest.limitPrecedesAggr) {
+            logger.info("Exclude cube " + cube.getName() + " because there's limit preceding aggregation");
+            result.incapableCause = CapabilityResult.IncapableCause.create(CapabilityResult.IncapableType.LIMIT_PRECEDE_AGGR);
+            return result;
+        }
+
+        if (digest.isRawQuery && rootFactTable.equals(digest.factTable)) {
+            if (cube.getConfig().isDisableCubeNoAggSQL()) {
+                result.incapableCause = CapabilityResult.IncapableCause.create(CapabilityResult.IncapableType.UNSUPPORT_RAWQUERY);
+                return result;
+            } else {
+                result.influences.add(new CapabilityInfluence() {
+                    @Override
+                    public double suggestCostMultiplier() {
+                        return 100;
+                    }
+
+                    @Override
+                    public MeasureDesc getInvolvedMeasure() {
+                        return null;
+                    }
+                });
+            }
         }
 
         // cost will be minded by caller
@@ -121,53 +176,12 @@ public class CubeCapabilityChecker {
         return result;
     }
 
-    private static boolean isJoinMatch(Collection<JoinDesc> joins, CubeInstance cube) {
-        CubeDesc cubeDesc = cube.getDescriptor();
-
-        List<JoinDesc> cubeJoins = new ArrayList<JoinDesc>(cubeDesc.getDimensions().size());
-        for (DimensionDesc d : cubeDesc.getDimensions()) {
-            if (d.getJoin() != null) {
-                cubeJoins.add(d.getJoin());
-            }
-        }
-        for (JoinDesc j : joins) {
-            // optiq engine can't decide which one is fk or pk
-            String pTable = j.getPrimaryKeyColumns()[0].getTable();
-            String factTable = cubeDesc.getFactTable();
-            if (factTable.equals(pTable)) {
-                j.swapPKFK();
-            }
-
-            // check primary key, all PK column should refer to same tale, the Fact Table of cube.
-            // Using first column's table name to check.
-            String fTable = j.getForeignKeyColumns()[0].getTable();
-            if (!factTable.equals(fTable)) {
-                logger.info("Fact Table" + factTable + " not matched in join: " + j + " on cube " + cube.getName());
-                return false;
-            }
-
-            // The hashcode() function of JoinDesc has been overwritten,
-            // which takes into consideration: pk,fk,jointype
-            if (!cubeJoins.contains(j)) {
-                logger.info("Query joins don't macth on cube " + cube.getName());
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static void tryDimensionAsMeasures(Collection<FunctionDesc> unmatchedAggregations, SQLDigest digest, CubeInstance cube, CapabilityResult result) {
-        CubeDesc cubeDesc = cube.getDescriptor();
-        Collection<FunctionDesc> cubeFuncs = cubeDesc.listAllFunctions();
+    private static void tryDimensionAsMeasures(Collection<FunctionDesc> unmatchedAggregations, CapabilityResult result,
+                                               Set<TblColRef> dimCols) {
 
         Iterator<FunctionDesc> it = unmatchedAggregations.iterator();
         while (it.hasNext()) {
             FunctionDesc functionDesc = it.next();
-
-            if (cubeFuncs.contains(functionDesc)) {
-                it.remove();
-                continue;
-            }
 
             // let calcite handle count
             if (functionDesc.isCount()) {
@@ -176,8 +190,13 @@ public class CubeCapabilityChecker {
             }
 
             // calcite can do aggregation from columns on-the-fly
-            List<TblColRef> neededCols = functionDesc.getParameter().getColRefs();
-            if (neededCols.size() > 0 && cubeDesc.listDimensionColumnsIncludingDerived().containsAll(neededCols) && FunctionDesc.BUILT_IN_AGGREGATIONS.contains(functionDesc.getExpression())) {
+            ParameterDesc parameterDesc = functionDesc.getParameter();
+            if (parameterDesc == null) {
+                continue;
+            }
+            List<TblColRef> neededCols = parameterDesc.getColRefs();
+            if (neededCols.size() > 0 && dimCols.containsAll(neededCols)
+                    && FunctionDesc.BUILT_IN_AGGREGATIONS.contains(functionDesc.getExpression())) {
                 result.influences.add(new CapabilityResult.DimensionAsMeasure(functionDesc));
                 it.remove();
                 continue;
@@ -186,8 +205,11 @@ public class CubeCapabilityChecker {
     }
 
     // custom measure types can cover unmatched dimensions or measures
-    private static void tryCustomMeasureTypes(Collection<TblColRef> unmatchedDimensions, Collection<FunctionDesc> unmatchedAggregations, SQLDigest digest, CubeInstance cube, CapabilityResult result) {
+    private static void tryCustomMeasureTypes(Collection<TblColRef> unmatchedDimensions,
+                                              Collection<FunctionDesc> unmatchedAggregations, SQLDigest digest, CubeInstance cube,
+                                              CapabilityResult result) {
         CubeDesc cubeDesc = cube.getDescriptor();
+        List<String> influencingMeasures = Lists.newArrayList();
         for (MeasureDesc measure : cubeDesc.getMeasures()) {
             //            if (unmatchedDimensions.isEmpty() && unmatchedAggregations.isEmpty())
             //                break;
@@ -196,10 +218,16 @@ public class CubeCapabilityChecker {
             if (measureType instanceof BasicMeasureType)
                 continue;
 
-            CapabilityInfluence inf = measureType.influenceCapabilityCheck(unmatchedDimensions, unmatchedAggregations, digest, measure);
-            if (inf != null)
+            CapabilityInfluence inf = measureType.influenceCapabilityCheck(unmatchedDimensions, unmatchedAggregations,
+                    digest, measure);
+            if (inf != null) {
                 result.influences.add(inf);
+                influencingMeasures.add(measure.getName() + "@" + measureType.getClass());
+            }
         }
+        if (influencingMeasures.size() != 0)
+            logger.info("Cube {} CapabilityInfluences: {}", cube.getCanonicalName(),
+                    StringUtils.join(influencingMeasures, ","));
     }
 
 }

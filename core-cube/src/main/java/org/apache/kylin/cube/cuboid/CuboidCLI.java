@@ -26,6 +26,7 @@ import java.util.TreeSet;
 
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.cube.CubeDescManager;
+import org.apache.kylin.cube.model.AggregationGroup;
 import org.apache.kylin.cube.model.CubeDesc;
 
 /**
@@ -43,7 +44,7 @@ public class CuboidCLI {
     }
 
     public static int simulateCuboidGeneration(CubeDesc cubeDesc, boolean validate) {
-        CuboidScheduler scheduler = new CuboidScheduler(cubeDesc);
+        CuboidScheduler scheduler = cubeDesc.getInitialCuboidScheduler();
         long baseCuboid = Cuboid.getBaseCuboidId(cubeDesc);
         Collection<Long> cuboidSet = new TreeSet<Long>();
         cuboidSet.add(baseCuboid);
@@ -63,40 +64,54 @@ public class CuboidCLI {
             }
         }
 
-        if (validate) {
-            //only run this for test purpose, performance is bad when # of dims is large
-            TreeSet<Long> enumCuboids = enumCalcCuboidCount(cubeDesc);
-            System.out.println(Arrays.toString(enumCuboids.toArray(new Long[enumCuboids.size()])));
-            if (enumCuboids.equals(cuboidSet) == false) {
-                throw new IllegalStateException("Expected cuboid set " + enumCuboids + "; but actual cuboid set " + cuboidSet);
+        boolean enableDimCap = false;
+        for (AggregationGroup agg : cubeDesc.getAggregationGroups()) {
+            if (agg.getDimCap() > 0) {
+                enableDimCap = true;
+                break;
             }
+        }
 
-            //check all valid and invalid
-            for (long i = 0; i < baseCuboid; ++i) {
-                if (cuboidSet.contains(i)) {
-                    if (!Cuboid.isValid(cubeDesc, i)) {
-                        throw new RuntimeException();
-                    }
+        if (validate) {
+            if (enableDimCap) {
+                if (cubeDesc.getAllCuboids().size() != cuboidSet.size()) {
+                    throw new IllegalStateException("Expected cuboid set " + cubeDesc.getAllCuboids() + "; but actual cuboid set " + cuboidSet);
+                }
+            } else {
+                //only run this for test purpose, performance is bad when # of dims is large
+                TreeSet<Long> enumCuboids = enumCalcCuboidCount(cubeDesc);
+                System.out.println(Arrays.toString(enumCuboids.toArray(new Long[enumCuboids.size()])));
+                if (enumCuboids.equals(cuboidSet) == false) {
+                    throw new IllegalStateException("Expected cuboid set " + enumCuboids + "; but actual cuboid set " + cuboidSet);
+                }
 
-                    if (Cuboid.translateToValidCuboid(cubeDesc, i) != i) {
-                        throw new RuntimeException();
-                    }
-                } else {
-                    if (Cuboid.isValid(cubeDesc, i)) {
-                        throw new RuntimeException();
-                    }
+                //check all valid and invalid
+                for (long i = 0; i < baseCuboid; ++i) {
+                    if (cuboidSet.contains(i)) {
+                        if (!scheduler.isValid(i)) {
+                            throw new RuntimeException();
+                        }
 
-                    long corrected = Cuboid.translateToValidCuboid(cubeDesc, i);
-                    if (corrected == i) {
-                        throw new RuntimeException();
-                    }
+                        if (scheduler.findBestMatchCuboid(i) != i) {
+                            throw new RuntimeException();
+                        }
+                    } else {
+                        if (scheduler.isValid(i)) {
+                            throw new RuntimeException();
+                        }
 
-                    if (!Cuboid.isValid(cubeDesc, corrected)) {
-                        throw new RuntimeException();
-                    }
+                        long corrected = scheduler.findBestMatchCuboid(i);
+                        if (corrected == i) {
+                            throw new RuntimeException();
+                        }
 
-                    if (Cuboid.translateToValidCuboid(cubeDesc, corrected) != corrected) {
-                        throw new RuntimeException();
+                        if (!scheduler.isValid(corrected)) {
+                            throw new RuntimeException();
+                        }
+
+                        if (scheduler.findBestMatchCuboid(corrected) != corrected) {
+                            throw new RuntimeException();
+                        }
                     }
                 }
             }
@@ -110,7 +125,7 @@ public class CuboidCLI {
         long baseCuboid = Cuboid.getBaseCuboidId(cube);
         TreeSet<Long> expectedCuboids = new TreeSet<Long>();
         for (long cuboid = 0; cuboid <= baseCuboid; cuboid++) {
-            if (Cuboid.isValid(cube, cuboid)) {
+            if (cube.getInitialCuboidScheduler().isValid(cuboid)) {
                 expectedCuboids.add(cuboid);
             }
         }
@@ -118,10 +133,10 @@ public class CuboidCLI {
     }
 
     public static int[] calculateAllLevelCount(CubeDesc cube) {
-        int levels = cube.getBuildLevel();
+        int levels = cube.getInitialCuboidScheduler().getBuildLevel();
         int[] allLevelCounts = new int[levels + 1];
 
-        CuboidScheduler scheduler = new CuboidScheduler(cube);
+        CuboidScheduler scheduler = cube.getInitialCuboidScheduler();
         LinkedList<Long> nextQueue = new LinkedList<Long>();
         LinkedList<Long> currentQueue = new LinkedList<Long>();
         long baseCuboid = Cuboid.getBaseCuboidId(cube);
@@ -132,10 +147,17 @@ public class CuboidCLI {
             while (!currentQueue.isEmpty()) {
                 long cuboid = currentQueue.pop();
                 Collection<Long> spnanningCuboids = scheduler.getSpanningCuboid(cuboid);
+
                 nextQueue.addAll(spnanningCuboids);
             }
             currentQueue = nextQueue;
             nextQueue = new LinkedList<Long>();
+
+            if (i == levels) {
+                if (!currentQueue.isEmpty()) {
+                    throw new IllegalStateException();
+                }
+            }
         }
 
         return allLevelCounts;

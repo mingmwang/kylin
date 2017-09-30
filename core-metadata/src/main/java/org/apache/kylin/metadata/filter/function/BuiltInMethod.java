@@ -18,18 +18,27 @@
 
 package org.apache.kylin.metadata.filter.function;
 
+import static org.apache.kylin.metadata.filter.function.LikeMatchers.LikeMatcher;
+
 import java.lang.reflect.Method;
-import java.util.regex.Pattern;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.apache.commons.lang3.reflect.MethodUtils;
 
 import com.google.common.collect.ImmutableMap;
 
 public enum BuiltInMethod {
-    UPPER(BuiltInMethod.class, "upper", String.class), LOWER(BuiltInMethod.class, "lower", String.class), SUBSTRING(BuiltInMethod.class, "substring", String.class, int.class, int.class), CHAR_LENGTH(BuiltInMethod.class, "charLength", String.class), LIKE(BuiltInMethod.class, "like", String.class, String.class), INITCAP(BuiltInMethod.class, "initcap", String.class);
+    UPPER(BuiltInMethod.class, "upper", String.class), LOWER(BuiltInMethod.class, "lower", String.class), SUBSTRING(BuiltInMethod.class, "substring", String.class, int.class, int.class), CHAR_LENGTH(BuiltInMethod.class, "charLength", String.class), LIKE(BuiltInMethod.class, "like", String.class, String.class), INITCAP(BuiltInMethod.class, "initcap", String.class), CONCAT(BuiltInMethod.class, "concat", String.class, String.class);
     public final Method method;
-
     public static final ImmutableMap<String, BuiltInMethod> MAP;
+
+    private static ThreadLocal<Map<String, LikeMatcher>> likePatterns = new ThreadLocal<Map<String, LikeMatcher>>() {
+        @Override
+        public Map<String, LikeMatcher> initialValue() {
+            return new HashMap<>();
+        }
+    };
 
     static {
         final ImmutableMap.Builder<String, BuiltInMethod> builder = ImmutableMap.builder();
@@ -46,9 +55,26 @@ public enum BuiltInMethod {
     }
 
     /** SQL {@code LIKE} function. */
-    public static boolean like(String s, String pattern) {
-        final String regex = Like.sqlToRegexLike(pattern, null);
-        return Pattern.matches(regex, s);
+    public static boolean like(String s, String patternStr) {
+        //TODO: escape in like is unsupported
+        //TODO: like is case sensitive now
+
+        if (s == null || patternStr == null)
+            return false;
+
+        Map<String, LikeMatcher> patterns = likePatterns.get();
+        LikeMatcher p = patterns.get(patternStr);
+        if (p == null) {
+
+            p = LikeMatchers.createMatcher(patternStr);
+
+            if (patterns.size() > 100) {
+                patterns.clear();//brutal but good enough
+            }
+            patterns.put(patternStr, p);
+        }
+
+        return p.matches(s);
     }
 
     /** SQL INITCAP(string) function. */
@@ -95,17 +121,32 @@ public enum BuiltInMethod {
 
     /** SQL SUBSTRING(string FROM ... FOR ...) function. */
     public static String substring(String s, int from, int for_) {
+        if (s == null)
+            return null;
         return s.substring(from - 1, Math.min(from - 1 + for_, s.length()));
     }
 
     /** SQL UPPER(string) function. */
     public static String upper(String s) {
+        if (s == null)
+            return null;
         return s.toUpperCase();
     }
 
     /** SQL LOWER(string) function. */
     public static String lower(String s) {
+        if (s == null)
+            return null;
         return s.toLowerCase();
+    }
+
+    /** SQL left || right */
+    public static String concat(String left, String right) {
+        if (left == null)
+            return right;
+        if (right == null)
+            return left;
+        return left.concat(right);
     }
 
 }

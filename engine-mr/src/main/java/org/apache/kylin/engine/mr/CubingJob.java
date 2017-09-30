@@ -18,10 +18,16 @@
 
 package org.apache.kylin.engine.mr;
 
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.text.SimpleDateFormat;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.TimeZone;
 import java.util.regex.Matcher;
 
 import org.apache.commons.lang3.tuple.Pair;
@@ -42,10 +48,14 @@ import org.apache.kylin.job.execution.ExecuteResult;
 import org.apache.kylin.job.execution.Output;
 import org.apache.kylin.metadata.project.ProjectInstance;
 import org.apache.kylin.metadata.project.ProjectManager;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  */
 public class CubingJob extends DefaultChainedExecutable {
+
+    private static final Logger logger = LoggerFactory.getLogger(CubingJob.class);
 
     public enum AlgorithmEnum {
         LAYER, INMEM
@@ -70,11 +80,18 @@ public class CubingJob extends DefaultChainedExecutable {
     private static CubingJob initCubingJob(CubeSegment seg, String jobType, String submitter, JobEngineConfig config) {
         KylinConfig kylinConfig = config.getConfig();
         CubeInstance cube = seg.getCubeInstance();
-        List<ProjectInstance> projList = ProjectManager.getInstance(kylinConfig).findProjects(cube.getType(), cube.getName());
+        List<ProjectInstance> projList = ProjectManager.getInstance(kylinConfig).findProjects(cube.getType(),
+                cube.getName());
         if (projList == null || projList.size() == 0) {
             throw new RuntimeException("Cannot find the project containing the cube " + cube.getName() + "!!!");
         } else if (projList.size() >= 2) {
-            throw new RuntimeException("Find more than one project containing the cube " + cube.getName() + ". It does't meet the uniqueness requirement!!! ");
+            String msg = "Find more than one project containing the cube " + cube.getName()
+                    + ". It does't meet the uniqueness requirement!!! ";
+            if (!config.getConfig().allowCubeAppearInMultipleProjects()) {
+                throw new RuntimeException(msg);
+            } else {
+                logger.warn(msg);
+            }
         }
 
         CubingJob result = new CubingJob();
@@ -84,7 +101,8 @@ public class CubingJob extends DefaultChainedExecutable {
         result.setProjectName(projList.get(0).getName());
         CubingExecutableUtil.setCubeName(seg.getCubeInstance().getName(), result.getParams());
         CubingExecutableUtil.setSegmentId(seg.getUuid(), result.getParams());
-        result.setName(seg.getCubeInstance().getName() + " - " + seg.getName() + " - " + jobType + " - " + format.format(new Date(System.currentTimeMillis())));
+        result.setName(jobType + " CUBE - " + seg.getCubeInstance().getName() + " - " + seg.getName() + " - "
+                + format.format(new Date(System.currentTimeMillis())));
         result.setSubmitter(submitter);
         result.setNotifyList(seg.getCubeInstance().getDescriptor().getNotifyList());
         return result;
@@ -94,45 +112,46 @@ public class CubingJob extends DefaultChainedExecutable {
         super();
     }
 
-
-    void setDeployEnvName(String name) {
+    protected void setDeployEnvName(String name) {
         setParam(DEPLOY_ENV_NAME, name);
     }
 
-    public static String getDeployEnvName() {
-        return DEPLOY_ENV_NAME;
+    public String getDeployEnvName() {
+        return getParam(DEPLOY_ENV_NAME);
     }
 
-    void setProjectName(String name) {
+    protected void setProjectName(String name) {
         setParam(PROJECT_INSTANCE_NAME, name);
     }
 
-    public static String getProjectName() {
-        return PROJECT_INSTANCE_NAME;
+    public String getProjectName() {
+        return getParam(PROJECT_INSTANCE_NAME);
     }
 
     @Override
     protected Pair<String, String> formatNotifications(ExecutableContext context, ExecutableState state) {
-        CubeInstance cubeInstance = CubeManager.getInstance(context.getConfig()).getCube(CubingExecutableUtil.getCubeName(this.getParams()));
-        final Output output = jobService.getOutput(getId());
+        CubeInstance cubeInstance = CubeManager.getInstance(context.getConfig())
+                .getCube(CubingExecutableUtil.getCubeName(this.getParams()));
+        final Output output = getManager().getOutput(getId());
         String logMsg;
         state = output.getState();
-        if (state != ExecutableState.ERROR && !cubeInstance.getDescriptor().getStatusNeedNotify().contains(state.toString())) {
+        if (state != ExecutableState.ERROR
+                && !cubeInstance.getDescriptor().getStatusNeedNotify().contains(state.toString())) {
             logger.info("state:" + state + " no need to notify users");
             return null;
         }
         switch (state) {
-            case ERROR:
-                logMsg = output.getVerboseMsg();
-                break;
-            case DISCARDED:
-                logMsg = "job has been discarded";
-                break;
-            case SUCCEED:
-                logMsg = "job has succeeded";
-                break;
-            default:
-                return null;
+        case ERROR:
+            logMsg = output.getVerboseMsg();
+            break;
+        case DISCARDED:
+            logMsg = "job has been discarded";
+            break;
+        case SUCCEED:
+            logMsg = "job has succeeded";
+            break;
+        default:
+            return null;
         }
         String content = ExecutableConstants.NOTIFY_EMAIL_TEMPLATE;
         content = content.replaceAll("\\$\\{job_name\\}", getName());
@@ -146,7 +165,8 @@ public class CubingJob extends DefaultChainedExecutable {
         content = content.replaceAll("\\$\\{mr_waiting\\}", getMapReduceWaitTime() / 60000 + "mins");
         content = content.replaceAll("\\$\\{last_update_time\\}", new Date(getLastModified()).toString());
         content = content.replaceAll("\\$\\{submitter\\}", StringUtil.noBlank(getSubmitter(), "missing submitter"));
-        content = content.replaceAll("\\$\\{error_log\\}", Matcher.quoteReplacement(StringUtil.noBlank(logMsg, "no error message")));
+        content = content.replaceAll("\\$\\{error_log\\}",
+                Matcher.quoteReplacement(StringUtil.noBlank(logMsg, "no error message")));
 
         try {
             InetAddress inetAddress = InetAddress.getLocalHost();
@@ -155,7 +175,8 @@ public class CubingJob extends DefaultChainedExecutable {
             logger.warn(e.getLocalizedMessage(), e);
         }
 
-        String title = "[" + state.toString() + "] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - " + CubingExecutableUtil.getCubeName(this.getParams());
+        String title = "[" + state.toString() + "] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - "
+                + CubingExecutableUtil.getCubeName(this.getParams());
 
         return Pair.of(title, content);
     }
@@ -174,6 +195,46 @@ public class CubingJob extends DefaultChainedExecutable {
         }
         setMapReduceWaitTime(time);
         super.onExecuteFinished(result, executableContext);
+    }
+
+    /**
+     * build fail because the metadata store has problem.
+     * @param exception
+     */
+    @Override
+    protected void handleMetaDataPersistException(Exception exception) {
+        String title = "[ERROR] - [" + getDeployEnvName() + "] - [" + getProjectName() + "] - "
+                + CubingExecutableUtil.getCubeName(this.getParams());
+        String content = ExecutableConstants.NOTIFY_EMAIL_TEMPLATE;
+        final String UNKNOWN = "UNKNOWN";
+        String errMsg = null;
+        if (exception != null) {
+            final StringWriter out = new StringWriter();
+            exception.printStackTrace(new PrintWriter(out));
+            errMsg = out.toString();
+        }
+
+        content = content.replaceAll("\\$\\{job_name\\}", getName());
+        content = content.replaceAll("\\$\\{result\\}", ExecutableState.ERROR.toString());
+        content = content.replaceAll("\\$\\{env_name\\}", getDeployEnvName());
+        content = content.replaceAll("\\$\\{project_name\\}", getProjectName());
+        content = content.replaceAll("\\$\\{cube_name\\}", CubingExecutableUtil.getCubeName(this.getParams()));
+        content = content.replaceAll("\\$\\{source_records_count\\}", UNKNOWN);
+        content = content.replaceAll("\\$\\{start_time\\}", UNKNOWN);
+        content = content.replaceAll("\\$\\{duration\\}", UNKNOWN);
+        content = content.replaceAll("\\$\\{mr_waiting\\}", UNKNOWN);
+        content = content.replaceAll("\\$\\{last_update_time\\}", UNKNOWN);
+        content = content.replaceAll("\\$\\{submitter\\}", StringUtil.noBlank(getSubmitter(), "missing submitter"));
+        content = content.replaceAll("\\$\\{error_log\\}",
+                Matcher.quoteReplacement(StringUtil.noBlank(errMsg, "no error message")));
+
+        try {
+            InetAddress inetAddress = InetAddress.getLocalHost();
+            content = content.replaceAll("\\$\\{job_engine\\}", inetAddress.getCanonicalHostName());
+        } catch (UnknownHostException e) {
+            logger.warn(e.getLocalizedMessage(), e);
+        }
+        sendMail(Pair.of(title, content));
     }
 
     public long getMapReduceWaitTime() {
@@ -230,7 +291,7 @@ public class CubingJob extends DefaultChainedExecutable {
         }
 
         for (AbstractExecutable child : tasks) {
-            Output output = executableManager.getOutput(child.getId());
+            Output output = getManager().getOutput(child.getId());
             String value = output.getExtra().get(key);
             if (value != null)
                 return value;

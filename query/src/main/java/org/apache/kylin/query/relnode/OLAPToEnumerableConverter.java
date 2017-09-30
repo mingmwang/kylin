@@ -22,26 +22,23 @@ import java.util.List;
 
 import org.apache.calcite.adapter.enumerable.EnumerableRel;
 import org.apache.calcite.adapter.enumerable.EnumerableRelImplementor;
-import org.apache.calcite.adapter.enumerable.PhysType;
-import org.apache.calcite.adapter.enumerable.PhysTypeImpl;
-import org.apache.calcite.linq4j.tree.Blocks;
-import org.apache.calcite.linq4j.tree.Expressions;
 import org.apache.calcite.plan.ConventionTraitDef;
 import org.apache.calcite.plan.RelOptCluster;
 import org.apache.calcite.plan.RelOptCost;
 import org.apache.calcite.plan.RelOptPlanner;
-import org.apache.calcite.plan.RelOptTable;
 import org.apache.calcite.plan.RelOptUtil;
 import org.apache.calcite.plan.RelTraitSet;
 import org.apache.calcite.rel.RelNode;
 import org.apache.calcite.rel.convert.ConverterImpl;
 import org.apache.calcite.rel.metadata.RelMetadataQuery;
-import org.apache.calcite.rel.type.RelDataType;
 import org.apache.calcite.sql.SqlExplainLevel;
-import org.apache.kylin.metadata.realization.IRealization;
-import org.apache.kylin.query.routing.NoRealizationFoundException;
-import org.apache.kylin.query.routing.QueryRouter;
-import org.apache.kylin.query.schema.OLAPTable;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.ClassUtil;
+import org.apache.kylin.query.routing.RealizationChooser;
+import org.apache.kylin.query.security.QueryInterceptor;
+import org.apache.kylin.query.security.QueryInterceptorUtil;
+
+import com.google.common.collect.Lists;
 
 /**
  */
@@ -64,31 +61,28 @@ public class OLAPToEnumerableConverter extends ConverterImpl implements Enumerab
 
     @Override
     public Result implement(EnumerableRelImplementor enumImplementor, Prefer pref) {
+        if (System.getProperty("calcite.debug") != null) {
+            String dumpPlan = RelOptUtil.dumpPlan("", this, false, SqlExplainLevel.DIGEST_ATTRIBUTES);
+            System.out.println("EXECUTION PLAN BEFORE REWRITE");
+            System.out.println(dumpPlan);
+        }
+
         // post-order travel children
         OLAPRel.OLAPImplementor olapImplementor = new OLAPRel.OLAPImplementor();
         olapImplementor.visitChild(getInput(), this);
 
-        // find cube from olap context
-        try {
-            for (OLAPContext context : OLAPContext.getThreadLocalContexts()) {
-                // Context has no table scan is created by OLAPJoinRel which looks like
-                //     (sub-query) as A join (sub-query) as B
-                // No realization needed for such context.
-                if (context.firstTableScan == null) {
-                    continue;
-                }
-                IRealization realization = QueryRouter.selectRealization(context);
-                context.realization = realization;
-            }
-        } catch (NoRealizationFoundException e) {
-            OLAPContext ctx0 = (OLAPContext) OLAPContext.getThreadLocalContexts().toArray()[0];
-            if (ctx0 != null && ctx0.olapSchema.hasStarSchemaUrl()) {
-                // generate hive result
-                return buildHiveResult(enumImplementor, pref, ctx0);
-            } else {
-                throw e;
-            }
+        // identify model & realization
+        List<OLAPContext> contexts = listContextsHavingScan();
+
+        // intercept query
+        List<QueryInterceptor> intercepts = QueryInterceptorUtil.getQueryInterceptors();
+        for (QueryInterceptor intercept : intercepts) {
+            intercept.intercept(contexts);
         }
+
+        RealizationChooser.selectRealization(contexts);
+
+        doAccessControl(contexts);
 
         // rewrite query if necessary
         OLAPRel.RewriteImplementor rewriteImplementor = new OLAPRel.RewriteImplementor();
@@ -108,15 +102,26 @@ public class OLAPToEnumerableConverter extends ConverterImpl implements Enumerab
         return impl.visitChild(this, 0, inputAsEnum, pref);
     }
 
-    private Result buildHiveResult(EnumerableRelImplementor enumImplementor, Prefer pref, OLAPContext context) {
-        RelDataType hiveRowType = getRowType();
-
-        context.setReturnTupleInfo(hiveRowType, null);
-        PhysType physType = PhysTypeImpl.of(enumImplementor.getTypeFactory(), hiveRowType, pref.preferArray());
-
-        RelOptTable factTable = context.firstTableScan.getTable();
-        Result result = enumImplementor.result(physType, Blocks.toBlock(Expressions.call(factTable.getExpression(OLAPTable.class), "executeHiveQuery", enumImplementor.getRootExpression())));
+    private List<OLAPContext> listContextsHavingScan() {
+        // Context has no table scan is created by OLAPJoinRel which looks like
+        //     (sub-query) as A join (sub-query) as B
+        // No realization needed for such context.
+        int size = OLAPContext.getThreadLocalContexts().size();
+        List<OLAPContext> result = Lists.newArrayListWithCapacity(size);
+        for (int i = 0; i < size; i++) {
+            OLAPContext ctx = OLAPContext.getThreadLocalContextById(i);
+            if (ctx.firstTableScan != null)
+                result.add(ctx);
+        }
         return result;
     }
 
+    private void doAccessControl(List<OLAPContext> contexts) {
+        KylinConfig config = KylinConfig.getInstanceFromEnv();
+        String controllerCls = config.getQueryAccessController();
+        if (null != controllerCls && !controllerCls.isEmpty()) {
+            OLAPContext.IAccessController accessController = (OLAPContext.IAccessController) ClassUtil.newInstance(controllerCls);
+            accessController.check(contexts, config);
+        }
+    }
 }

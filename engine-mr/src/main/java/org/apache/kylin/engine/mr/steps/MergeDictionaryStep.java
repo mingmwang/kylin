@@ -21,7 +21,6 @@ package org.apache.kylin.engine.mr.steps;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 
@@ -38,10 +37,14 @@ import org.apache.kylin.job.execution.AbstractExecutable;
 import org.apache.kylin.job.execution.ExecutableContext;
 import org.apache.kylin.job.execution.ExecuteResult;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Lists;
 
 public class MergeDictionaryStep extends AbstractExecutable {
+
+    private static final Logger logger = LoggerFactory.getLogger(MergeDictionaryStep.class);
 
     public MergeDictionaryStep() {
         super();
@@ -88,40 +91,24 @@ public class MergeDictionaryStep extends AbstractExecutable {
     }
 
     /**
-     * For the new segment, we need to create dictionaries for it, too. For
-     * those dictionaries on fact table, create it by merging underlying
-     * dictionaries For those dictionaries on lookup table, just copy it from
-     * any one of the merging segments, it's guaranteed to be consistent(checked
-     * in CubeSegmentValidator)
-     *
+     * For the new segment, we need to create new dimension dictionaries by merging underlying
+     * dictionaries. (https://issues.apache.org/jira/browse/KYLIN-2457, https://issues.apache.org/jira/browse/KYLIN-2800)
      * @param cube
      * @param newSeg
      * @throws IOException
      */
     private void makeDictForNewSegment(KylinConfig conf, CubeInstance cube, CubeSegment newSeg, List<CubeSegment> mergingSegments) throws IOException {
-        HashSet<TblColRef> colsNeedMeringDict = new HashSet<TblColRef>();
-        HashSet<TblColRef> colsNeedCopyDict = new HashSet<TblColRef>();
         DictionaryManager dictMgr = DictionaryManager.getInstance(conf);
-
         CubeDesc cubeDesc = cube.getDescriptor();
 
-        for (TblColRef col : cubeDesc.getAllColumnsNeedDictionary()) {
-            String dictTable = dictMgr.decideSourceData(cubeDesc.getModel(), true, col).getTable();
-            if (cubeDesc.getFactTable().equalsIgnoreCase(dictTable)) {
-                colsNeedMeringDict.add(col);
-            } else {
-                colsNeedCopyDict.add(col);
-            }
-        }
-
-        for (TblColRef col : colsNeedMeringDict) {
+        for (TblColRef col : cubeDesc.getAllColumnsNeedDictionaryBuilt()) {
             logger.info("Merging fact table dictionary on : " + col);
             List<DictionaryInfo> dictInfos = new ArrayList<DictionaryInfo>();
             for (CubeSegment segment : mergingSegments) {
                 logger.info("Including fact table dictionary of segment : " + segment);
                 if (segment.getDictResPath(col) != null) {
                     DictionaryInfo dictInfo = dictMgr.getDictionaryInfo(segment.getDictResPath(col));
-                    if (dictInfo != null) {
+                    if (dictInfo != null && !dictInfos.contains(dictInfo)) {
                         dictInfos.add(dictInfo);
                     } else {
                         logger.warn("Failed to load DictionaryInfo from " + segment.getDictResPath(col));
@@ -129,11 +116,6 @@ public class MergeDictionaryStep extends AbstractExecutable {
                 }
             }
             mergeDictionaries(dictMgr, newSeg, dictInfos, col);
-        }
-
-        for (TblColRef col : colsNeedCopyDict) {
-            String path = mergingSegments.get(0).getDictResPath(col);
-            newSeg.putDictResPath(col, path);
         }
     }
 
@@ -146,9 +128,9 @@ public class MergeDictionaryStep extends AbstractExecutable {
     }
 
     /**
-     * make snapshots for the new segment by copying from one of the underlying
-     * merging segments. it's guaranteed to be consistent(checked in
-     * CubeSegmentValidator)
+     * make snapshots for the new segment by copying from the latest one of the underlying
+     * merging segments. It's guaranteed to be consistent under the assumption that lookup tables
+     * would be either static or incremental.
      *
      * @param cube
      * @param newSeg

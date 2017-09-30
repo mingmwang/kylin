@@ -18,19 +18,21 @@
 
 package org.apache.kylin.metadata.datatype;
 
-import java.nio.ByteBuffer;
-import java.util.Map;
-
+import com.google.common.collect.Maps;
 import org.apache.kylin.common.util.BytesSerializer;
 
-import com.google.common.collect.Maps;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.nio.ByteBuffer;
+import java.util.Map;
 
 /**
  * Note: the implementations MUST be thread-safe.
  */
-abstract public class DataTypeSerializer<T> implements BytesSerializer<T> {
+abstract public class DataTypeSerializer<T> implements BytesSerializer<T>, java.io.Serializable {
 
     final static Map<String, Class<?>> implementations = Maps.newHashMap();
+    protected transient ThreadLocal current = new ThreadLocal();
     static {
         implementations.put("char", StringSerializer.class);
         implementations.put("varchar", StringSerializer.class);
@@ -50,7 +52,7 @@ abstract public class DataTypeSerializer<T> implements BytesSerializer<T> {
         implementations.put("datetime", DateTimeSerializer.class);
         implementations.put("timestamp", DateTimeSerializer.class);
     }
-    
+
     public static void register(String dataTypeName, Class<? extends DataTypeSerializer<?>> impl) {
         implementations.put(dataTypeName, impl);
     }
@@ -70,7 +72,7 @@ abstract public class DataTypeSerializer<T> implements BytesSerializer<T> {
             throw new RuntimeException(e); // never happen
         }
     }
-    
+
     /** Peek into buffer and return the length of serialization which is previously written by this.serialize().
      *  The current position of input buffer is guaranteed to be at the beginning of the serialization.
      *  The implementation must not alter the buffer position by its return. */
@@ -81,9 +83,22 @@ abstract public class DataTypeSerializer<T> implements BytesSerializer<T> {
 
     /** Get an estimate of the average size in bytes of this kind of serialized data */
     abstract public int getStorageBytesEstimate();
-    
+
     /** An optional convenient method that converts a string to this data type (for dimensions) */
     public T valueOf(String str) {
+        throw new UnsupportedOperationException();
+    }
+
+    /** If the query is exactAggregation and has some memory hungry measures,
+     * we could directly return final result to speed up the query.
+     * If the DataTypeSerializer support this,
+     * which should override the getFinalResult method, besides that, the deserialize and peekLength method should also support it, like {@link org.apache.kylin.measure.bitmap.BitmapSerializer} */
+    public boolean supportDirectReturnResult() {
+        return false;
+    }
+
+    /** An optional method that converts a expensive buffer to lightweight buffer containing final result (for memory hungry measures) */
+    public ByteBuffer getFinalResult(ByteBuffer in) {
         throw new UnsupportedOperationException();
     }
 
@@ -93,5 +108,10 @@ abstract public class DataTypeSerializer<T> implements BytesSerializer<T> {
             return "NULL";
         else
             return value.toString();
+    }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject();
+        current = new ThreadLocal();
     }
 }

@@ -18,6 +18,7 @@
 
 package org.apache.kylin.dimension;
 
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.metadata.model.TblColRef;
 
 /**
@@ -33,8 +34,8 @@ public interface IDimensionEncodingMap {
 
     /** Get dimension encoding of a column */
     DimensionEncoding get(TblColRef col);
-    
+
     /** Get dictionary of a column if its encoding is dictionary based */
     Dictionary<String> getDictionary(TblColRef col);
-    
+
 }

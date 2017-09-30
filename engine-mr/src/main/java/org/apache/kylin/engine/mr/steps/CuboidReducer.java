@@ -22,16 +22,16 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.List;
 
+import com.google.common.collect.Lists;
 import org.apache.hadoop.io.Text;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.cube.CubeManager;
-import org.apache.kylin.cube.kv.RowConstants;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.engine.mr.KylinReducer;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
 import org.apache.kylin.engine.mr.common.BatchConstants;
+import org.apache.kylin.measure.BufferedMeasureCodec;
 import org.apache.kylin.measure.MeasureAggregators;
-import org.apache.kylin.measure.MeasureCodec;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -48,20 +48,19 @@ public class CuboidReducer extends KylinReducer<Text, Text, Text, Text> {
     private CubeDesc cubeDesc;
     private List<MeasureDesc> measuresDescs;
 
-    private MeasureCodec codec;
+    private BufferedMeasureCodec codec;
     private MeasureAggregators aggs;
 
-    private int counter;
     private int cuboidLevel;
-    private boolean[] needAggr;
+    private int[] needAggrMeasures;
     private Object[] input;
     private Object[] result;
+    private int vcounter;
 
-    private ByteBuffer valueBuf = ByteBuffer.allocate(RowConstants.ROWVALUE_BUFFER_SIZE);
     private Text outputValue = new Text();
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
         cubeName = context.getConfiguration().get(BatchConstants.CFG_CUBE_NAME).toUpperCase();
 
@@ -73,44 +72,45 @@ public class CuboidReducer extends KylinReducer<Text, Text, Text, Text> {
         cubeDesc = CubeManager.getInstance(config).getCube(cubeName).getDescriptor();
         measuresDescs = cubeDesc.getMeasures();
 
-        codec = new MeasureCodec(measuresDescs);
+        codec = new BufferedMeasureCodec(measuresDescs);
         aggs = new MeasureAggregators(measuresDescs);
 
         input = new Object[measuresDescs.size()];
         result = new Object[measuresDescs.size()];
-        needAggr = new boolean[measuresDescs.size()];
 
-        if (cuboidLevel > 0) {
-            for (int i = 0; i < measuresDescs.size(); i++) {
-                needAggr[i] = !measuresDescs.get(i).getFunction().getMeasureType().onlyAggrInBaseCuboid();
+        List<Integer> needAggMeasuresList = Lists.newArrayList();
+        for (int i = 0; i < measuresDescs.size(); i++) {
+            if (cuboidLevel == 0) {
+                needAggMeasuresList.add(i);
+            } else {
+                if (!measuresDescs.get(i).getFunction().getMeasureType().onlyAggrInBaseCuboid()) {
+                    needAggMeasuresList.add(i);
+                }
             }
+        }
+
+        needAggrMeasures = new int[needAggMeasuresList.size()];
+        for (int i = 0; i < needAggMeasuresList.size(); i++) {
+            needAggrMeasures[i] = needAggMeasuresList.get(i);
         }
     }
 
     @Override
-    public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+    public void doReduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
         aggs.reset();
 
         for (Text value : values) {
-            codec.decode(ByteBuffer.wrap(value.getBytes(), 0, value.getLength()), input);
-            if (cuboidLevel > 0) {
-                aggs.aggregate(input, needAggr);
-            } else {
-                aggs.aggregate(input);
+            if (vcounter++ % BatchConstants.NORMAL_RECORD_LOG_THRESHOLD == 0) {
+                logger.info("Handling value with ordinal (This is not KV number!): " + vcounter);
             }
+            codec.decode(ByteBuffer.wrap(value.getBytes(), 0, value.getLength()), input);
+            aggs.aggregate(input, needAggrMeasures);
         }
         aggs.collectStates(result);
 
-        valueBuf.clear();
-        codec.encode(result, valueBuf);
+        ByteBuffer valueBuf = codec.encode(result);
 
         outputValue.set(valueBuf.array(), 0, valueBuf.position());
         context.write(key, outputValue);
-
-        counter++;
-        if (counter % BatchConstants.NORMAL_RECORD_LOG_THRESHOLD == 0) {
-            logger.info("Handled " + counter + " records!");
-        }
     }
-
 }

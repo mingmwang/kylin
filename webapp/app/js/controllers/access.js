@@ -28,7 +28,6 @@ KylinApp.controller('AccessCtrl', function ($scope, AccessService, MessageServic
   "<li>CUBE ADMIN: Full access to cube and jobs, including access management.</li></ul></div>";
 
   $scope.authorities = null;
-
   AuthenticationService.authorities({}, function (authorities) {
     $scope.authorities = authorities.stringList;
   });
@@ -55,6 +54,7 @@ KylinApp.controller('AccessCtrl', function ($scope, AccessService, MessageServic
 //            MessageService.sendMsg('Access granted!', 'success', {});
       SweetAlert.swal('Success!', 'Access granted!', 'success');
     }, function (e) {
+      grantRequst.uuid = uuid;
       if (e.status == 404) {
 //                MessageService.sendMsg('User not found!', 'error', {});
         SweetAlert.swal('Oops...', 'User not found!!', 'error');
@@ -107,7 +107,8 @@ KylinApp.controller('AccessCtrl', function ($scope, AccessService, MessageServic
       var revokeRequst = {
         type: type,
         uuid: entity.uuid,
-        accessEntryId: access.id
+        accessEntryId: access.id,
+        sid: access.sid.principal
       };
       AccessService.revoke(revokeRequst, function (accessEntities) {
         entity.accessEntities = accessEntities.accessEntryResponseList;

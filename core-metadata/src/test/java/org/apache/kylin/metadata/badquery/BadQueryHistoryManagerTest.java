@@ -18,7 +18,8 @@
 
 package org.apache.kylin.metadata.badquery;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
 
 import java.io.IOException;
 import java.util.NavigableSet;
@@ -63,7 +64,8 @@ public class BadQueryHistoryManagerTest extends LocalFileMetadataTestCase {
     public void testAddEntryToProject() throws IOException {
         KylinConfig kylinConfig = getTestConfig();
         BadQueryHistoryManager manager = BadQueryHistoryManager.getInstance(kylinConfig);
-        BadQueryHistory history = manager.addEntryToProject("sql", 1459362239992L, "adj", 100, "server", "t-0", "default");
+        BadQueryEntry entry = new BadQueryEntry("sql", "adj", 1459362239992L, 100, "server", "t-0", "user");
+        BadQueryHistory history = manager.upsertEntryToProject(entry, "default");
         NavigableSet<BadQueryEntry> entries = history.getEntries();
         assertEquals(3, entries.size());
 
@@ -74,10 +76,12 @@ public class BadQueryHistoryManagerTest extends LocalFileMetadataTestCase {
         assertEquals("adj", newEntry.getAdj());
         assertEquals(1459362239992L, newEntry.getStartTime());
         assertEquals("server", newEntry.getServer());
+        assertEquals("user", newEntry.getUser());
         assertEquals("t-0", newEntry.getThread());
 
         for (int i = 0; i < kylinConfig.getBadQueryHistoryNum(); i++) {
-            history = manager.addEntryToProject("sql", 1459362239993L + i, "adj", 100 + i, "server", "t-0", "default");
+            BadQueryEntry tmp = new BadQueryEntry("sql", "adj", 1459362239993L + i, 100 + i, "server", "t-0", "user");
+            history = manager.upsertEntryToProject(tmp, "default");
         }
         assertEquals(kylinConfig.getBadQueryHistoryNum(), history.getEntries().size());
     }
@@ -87,16 +91,17 @@ public class BadQueryHistoryManagerTest extends LocalFileMetadataTestCase {
         KylinConfig kylinConfig = getTestConfig();
         BadQueryHistoryManager manager = BadQueryHistoryManager.getInstance(kylinConfig);
 
-        manager.addEntryToProject("sql", 1459362239000L, "adj", 100, "server", "t-0", "default");
-        BadQueryHistory history = manager.updateEntryToProject("sql", 1459362239000L, "adj2", 120, "server2", "t-1", "default");
+        manager.upsertEntryToProject(new BadQueryEntry("sql", "adj", 1459362239000L, 100, "server", "t-0", "user"), "default");
+        BadQueryHistory history = manager.upsertEntryToProject(new BadQueryEntry("sql", "adj2", 1459362239000L, 120, "server2", "t-1", "user"), "default");
 
         NavigableSet<BadQueryEntry> entries = history.getEntries();
-        BadQueryEntry newEntry = entries.floor(new BadQueryEntry("sql", "adj2", 1459362239000L, 120, "server2", "t-1"));
+        BadQueryEntry newEntry = entries.floor(new BadQueryEntry("sql", "adj2", 1459362239000L, 120, "server2", "t-1", "user"));
         System.out.println(newEntry);
         assertEquals("adj2", newEntry.getAdj());
         assertEquals("server2", newEntry.getServer());
         assertEquals("t-1", newEntry.getThread());
-        assertEquals(120, (int)newEntry.getRunningSec());
+        assertEquals("user", newEntry.getUser());
+        assertEquals(120, (int) newEntry.getRunningSec());
     }
 
 }

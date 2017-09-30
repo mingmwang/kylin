@@ -161,14 +161,14 @@ public class CubeDescUpgrade_v_1_5_1 {
             agg.setIncludes(toArray(remaining));
 
             SelectRule selectRule = new SelectRule();
-            selectRule.hierarchy_dims = hierarchies.toArray(new String[hierarchies.size()][]);
+            selectRule.hierarchyDims = hierarchies.toArray(new String[hierarchies.size()][]);
             if (joint.size() != 0) {
-                selectRule.joint_dims = new String[1][];
-                selectRule.joint_dims[0] = joint.toArray(new String[joint.size()]);
+                selectRule.jointDims = new String[1][];
+                selectRule.jointDims[0] = joint.toArray(new String[joint.size()]);
             } else {
-                selectRule.joint_dims = new String[0][];
+                selectRule.jointDims = new String[0][];
             }
-            selectRule.mandatory_dims = mandatories.toArray(new String[mandatories.size()]);
+            selectRule.mandatoryDims = mandatories.toArray(new String[mandatories.size()]);
             agg.setSelectRule(selectRule);
 
             aggs.add(agg);
@@ -217,7 +217,7 @@ public class CubeDescUpgrade_v_1_5_1 {
 
     private void upgradeRowKey(CubeDesc oldModel, org.apache.kylin.cube.model.CubeDesc newModel) {
         RowKeyDesc oldRowKey = oldModel.getRowkey();
-        if (oldModel == null) {
+        if (oldRowKey == null) {
             throw new IllegalArgumentException("RowKeyDesc is null");
         }
 
@@ -270,13 +270,20 @@ public class CubeDescUpgrade_v_1_5_1 {
 
     private void copyUnChangedProperties(CubeDesc oldModel, org.apache.kylin.cube.model.CubeDesc newModel) {
         newModel.setUuid(oldModel.getUuid());
-        newModel.setName(oldModel.getName());
-        newModel.setDescription(oldModel.getDescription());
-        newModel.setMeasures(oldModel.getMeasures());
-        newModel.setNullStrings(oldModel.getNullStrings());
-        newModel.setModelName(oldModel.getModelName());
-        newModel.setNotifyList(oldModel.getNotifyList());
         newModel.setLastModified(oldModel.getLastModified());
+
+        newModel.setName(oldModel.getName());
+        newModel.setModelName(oldModel.getModelName());
+        newModel.setDescription(oldModel.getDescription());
+        newModel.setNullStrings(oldModel.getNullStrings());
+        newModel.setMeasures(oldModel.getMeasures());
+        newModel.setNotifyList(oldModel.getNotifyList());
+        newModel.setStatusNeedNotify(oldModel.getStatusNeedNotify());
+
+        newModel.setPartitionDateStart(oldModel.getPartitionDateStart());
+        newModel.setPartitionDateEnd(oldModel.getPartitionDateEnd());
+        newModel.setAutoMergeTimeRanges(oldModel.getAutoMergeTimeRanges());
+        newModel.setRetentionRange(oldModel.getRetentionRange());
         newModel.setStorageType(oldModel.getStorageType());
         newModel.setEngineType(oldModel.getEngineType());
     }

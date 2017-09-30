@@ -18,22 +18,21 @@
 
 package org.apache.kylin.dict;
 
-import org.apache.kylin.common.util.Bytes;
-import org.apache.kylin.source.ReadableTable;
-
 import java.io.IOException;
 import java.util.Arrays;
+
+import org.apache.kylin.source.IReadableTable;
 
 /**
  * Created by dongli on 10/29/15.
  */
 public class TableColumnValueEnumerator implements IDictionaryValueEnumerator {
 
-    private ReadableTable.TableReader reader;
+    private IReadableTable.TableReader reader;
     private int colIndex;
-    private byte[] colValue;
+    private String colValue;
 
-    public TableColumnValueEnumerator(ReadableTable.TableReader reader, int colIndex) {
+    public TableColumnValueEnumerator(IReadableTable.TableReader reader, int colIndex) {
         this.reader = reader;
         this.colIndex = colIndex;
     }
@@ -53,7 +52,7 @@ public class TableColumnValueEnumerator implements IDictionaryValueEnumerator {
                 colStrValue = split[colIndex];
             }
 
-            colValue = colStrValue == null ? null : Bytes.toBytes(colStrValue);
+            colValue = colStrValue;
             return true;
 
         } else {
@@ -69,7 +68,7 @@ public class TableColumnValueEnumerator implements IDictionaryValueEnumerator {
     }
 
     @Override
-    public byte[] current() {
+    public String current() {
         return colValue;
     }
 }

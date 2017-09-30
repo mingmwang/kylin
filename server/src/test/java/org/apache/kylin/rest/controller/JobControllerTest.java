@@ -41,6 +41,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /**
  * @author xduo
@@ -50,9 +51,11 @@ public class JobControllerTest extends ServiceTestBase {
     private JobController jobSchedulerController;
     private CubeController cubeController;
     @Autowired
+    @Qualifier("jobService")
     JobService jobService;
 
     @Autowired
+    @Qualifier("cubeMgmtService")
     CubeService cubeService;
     private static final String CUBE_NAME = "new_job_controller";
 
@@ -115,6 +118,8 @@ public class JobControllerTest extends ServiceTestBase {
         jobBuildRequest.setBuildType("BUILD");
         jobBuildRequest.setStartTime(20130331080000L);
         jobBuildRequest.setEndTime(20131212080000L);
+
+        // Yang: how to rebuild a cube does not exists?!
         JobInstance job = cubeController.rebuild(CUBE_NAME, jobBuildRequest);
 
         jobSchedulerController.resume(job.getId());

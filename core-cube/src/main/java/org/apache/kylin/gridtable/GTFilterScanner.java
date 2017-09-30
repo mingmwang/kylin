@@ -18,7 +18,6 @@
 
 package org.apache.kylin.gridtable;
 
-import java.io.IOException;
 import java.util.BitSet;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -33,50 +32,44 @@ import org.apache.kylin.metadata.filter.TupleFilter;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
 
-public class GTFilterScanner implements IGTScanner {
+public class GTFilterScanner extends GTForwardingScanner {
 
-    final private IGTScanner inputScanner;
-    final private TupleFilter filter;
-    final private IFilterCodeSystem<ByteArray> filterCodeSystem;
-    final private IEvaluatableTuple oneTuple; // avoid instance creation
+    private TupleFilter filter;
+    private IFilterCodeSystem<ByteArray> filterCodeSystem;
+    private IEvaluatableTuple oneTuple; // avoid instance creation
 
     private GTRecord next = null;
 
-    public GTFilterScanner(IGTScanner inputScanner, GTScanRequest req) throws IOException {
-        this.inputScanner = inputScanner;
-        this.filter = req.getFilterPushDown();
-        this.filterCodeSystem = GTUtil.wrap(getInfo().codeSystem.getComparator());
-        this.oneTuple = new IEvaluatableTuple() {
-            @Override
-            public Object getValue(TblColRef col) {
-                return next.get(col.getColumnDesc().getZeroBasedIndex());
-            }
-        };
+    private IGTBypassChecker checker = null;
 
-        if (TupleFilter.isEvaluableRecursively(filter) == false)
-            throw new IllegalArgumentException();
+    public GTFilterScanner(IGTScanner delegated, GTScanRequest req, IGTBypassChecker checker) {
+        super(delegated);
+        this.checker = checker;
+
+        if (req != null) {
+            this.filter = req.getFilterPushDown();
+            this.filterCodeSystem = GTUtil.wrap(getInfo().codeSystem.getComparator());
+            this.oneTuple = new IEvaluatableTuple() {
+                @Override
+                public Object getValue(TblColRef col) {
+                    return next.get(col.getColumnDesc().getZeroBasedIndex());
+                }
+            };
+
+            if (!TupleFilter.isEvaluableRecursively(filter))
+                throw new IllegalArgumentException();
+        }
     }
 
-    @Override
-    public GTInfo getInfo() {
-        return inputScanner.getInfo();
-    }
-
-    @Override
-    public int getScannedRowCount() {
-        return inputScanner.getScannedRowCount();
-    }
-
-    @Override
-    public void close() throws IOException {
-        inputScanner.close();
+    public void setChecker(IGTBypassChecker checker) {
+        this.checker = checker;
     }
 
     @Override
     public Iterator<GTRecord> iterator() {
         return new Iterator<GTRecord>() {
 
-            private Iterator<GTRecord> inputIterator = inputScanner.iterator();
+            private Iterator<GTRecord> inputIterator = delegated.iterator();
             private FilterResultCache resultCache = new FilterResultCache(getInfo(), filter);
 
             @Override
@@ -96,14 +89,18 @@ public class GTFilterScanner implements IGTScanner {
             }
 
             private boolean evaluate() {
+                if (checker != null && checker.shouldBypass(next)) {
+                    return false;
+                }
+
                 if (filter == null)
                     return true;
-                
+
                 // 'next' and 'oneTuple' are referring to the same record
                 boolean[] cachedResult = resultCache.checkCache(next);
                 if (cachedResult != null)
                     return cachedResult[0];
-                
+
                 boolean result = filter.evaluate(oneTuple, filterCodeSystem);
                 resultCache.setLastResult(result);
                 return result;
@@ -132,12 +129,12 @@ public class GTFilterScanner implements IGTScanner {
     }
 
     // cache the last one input and result, can reuse because rowkey are ordered, and same input could come in small group
-    static class FilterResultCache {
+    public static class FilterResultCache {
         static final int CHECKPOINT = 10000;
         static final double HIT_RATE_THRESHOLD = 0.5;
-        static boolean ENABLED = true; // enable cache by default
+        public static boolean ENABLED = true; // enable cache by default
 
-        boolean enabled = ENABLED;
+        public boolean enabled = ENABLED;
         ImmutableBitSet colsInFilter;
         int count;
         int hit;
@@ -153,16 +150,16 @@ public class GTFilterScanner implements IGTScanner {
         public boolean[] checkCache(GTRecord record) {
             if (!enabled)
                 return null;
-            
+
             count++;
-            
+
             // disable the cache if the hit rate is bad
             if (count == CHECKPOINT) {
                 if ((double) hit / (double) count < HIT_RATE_THRESHOLD) {
                     enabled = false;
                 }
             }
-            
+
             boolean match = count > 1;
             int p = 0;
             for (int i = 0; i < colsInFilter.trueBitCount(); i++) {
@@ -176,7 +173,7 @@ public class GTFilterScanner implements IGTScanner {
                 }
                 p += col.length();
             }
-            
+
             if (match) {
                 hit++;
                 return lastResult;

@@ -19,13 +19,14 @@
 KylinApp.factory('CubeService', ['$resource', function ($resource, config) {
   return $resource(Config.service.url + 'cubes/:cubeId/:propName/:propValue/:action', {}, {
     list: {method: 'GET', params: {}, isArray: true},
-    getValidEncodings: {method: 'GET', params: {action:"validEncodings"}, isArray: true},
+    getValidEncodings: {method: 'GET', params: {action:"validEncodings"}, isArray: false},
     getCube: {method: 'GET', params: {}, isArray: false},
     getSql: {method: 'GET', params: {propName: 'segs', action: 'sql'}, isArray: false},
     updateNotifyList: {method: 'PUT', params: {propName: 'notify_list'}, isArray: false},
     cost: {method: 'PUT', params: {action: 'cost'}, isArray: false},
     rebuildLookUp: {method: 'PUT', params: {propName: 'segs', action: 'refresh_lookup'}, isArray: false},
     rebuildCube: {method: 'PUT', params: {action: 'rebuild'}, isArray: false},
+    rebuildStreamingCube: {method: 'PUT', params: {action: 'build2'}, isArray: false},
     disable: {method: 'PUT', params: {action: 'disable'}, isArray: false},
     enable: {method: 'PUT', params: {action: 'enable'}, isArray: false},
     purge: {method: 'PUT', params: {action: 'purge'}, isArray: false},

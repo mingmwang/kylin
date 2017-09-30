@@ -21,10 +21,7 @@ package org.apache.kylin.job;
 import java.io.File;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
 import org.apache.kylin.common.KylinConfig;
-import org.apache.kylin.common.util.AbstractKylinTestCase;
 import org.apache.kylin.common.util.ClassUtil;
 import org.apache.kylin.common.util.HBaseMetadataTestCase;
 import org.junit.After;
@@ -32,6 +29,8 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Ignore;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * This test case is ONLY for dev use, it deploys local meta to sandbox
@@ -39,7 +38,7 @@ import org.junit.Test;
 @Ignore("dev use only")
 public class DeployLocalMetaToRemoteTest {
 
-    private static final Log logger = LogFactory.getLog(DeployLocalMetaToRemoteTest.class);
+    private static final Logger logger = LoggerFactory.getLogger(DeployLocalMetaToRemoteTest.class);
 
     @BeforeClass
     public static void beforeClass() throws Exception {
@@ -47,7 +46,7 @@ public class DeployLocalMetaToRemoteTest {
         ClassUtil.addClasspath(new File(HBaseMetadataTestCase.SANDBOX_TEST_DATA).getAbsolutePath());
         System.setProperty(KylinConfig.KYLIN_CONF, HBaseMetadataTestCase.SANDBOX_TEST_DATA);
         if (StringUtils.isEmpty(System.getProperty("hdp.version"))) {
-            throw new RuntimeException("No hdp.version set; Please set hdp.version in your jvm option, for example: -Dhdp.version=2.2.4.2-2");
+            throw new RuntimeException("No hdp.version set; Please set hdp.version in your jvm option, for example: -Dhdp.version=2.4.0.0-169");
         }
     }
 

@@ -29,6 +29,7 @@ import org.apache.hadoop.mapreduce.lib.input.SequenceFileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.output.SequenceFileOutputFormat;
 import org.apache.hadoop.util.ToolRunner;
+import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
 
 /**
@@ -38,55 +39,50 @@ import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
 public class RowKeyDistributionCheckerJob extends AbstractHadoopJob {
 
     @SuppressWarnings("static-access")
-    protected static final Option rowKeyStatsFilePath = OptionBuilder.withArgName("path").hasArg().isRequired(true).withDescription("rowKeyStatsFilePath").create("rowKeyStatsFilePath");
+    protected static final Option ROW_KEY_STATS_FILE_PATH = OptionBuilder.withArgName("path").hasArg().isRequired(true).withDescription("rowKeyStatsFilePath").create("rowKeyStatsFilePath");
 
     @Override
     public int run(String[] args) throws Exception {
         Options options = new Options();
 
-        try {
-            options.addOption(OPTION_INPUT_PATH);
-            options.addOption(OPTION_OUTPUT_PATH);
-            options.addOption(OPTION_JOB_NAME);
-            options.addOption(rowKeyStatsFilePath);
+        options.addOption(OPTION_INPUT_PATH);
+        options.addOption(OPTION_OUTPUT_PATH);
+        options.addOption(OPTION_JOB_NAME);
+        options.addOption(ROW_KEY_STATS_FILE_PATH);
 
-            parseOptions(options, args);
+        parseOptions(options, args);
 
-            String statsFilePath = getOptionValue(rowKeyStatsFilePath);
+        String statsFilePath = getOptionValue(ROW_KEY_STATS_FILE_PATH);
 
-            // start job
-            String jobName = getOptionValue(OPTION_JOB_NAME);
-            job = Job.getInstance(getConf(), jobName);
+        // start job
+        String jobName = getOptionValue(OPTION_JOB_NAME);
+        job = Job.getInstance(getConf(), jobName);
 
-            setJobClasspath(job);
+        setJobClasspath(job, KylinConfig.getInstanceFromEnv());
 
-            addInputDirs(getOptionValue(OPTION_INPUT_PATH), job);
+        addInputDirs(getOptionValue(OPTION_INPUT_PATH), job);
 
-            Path output = new Path(getOptionValue(OPTION_OUTPUT_PATH));
-            FileOutputFormat.setOutputPath(job, output);
+        Path output = new Path(getOptionValue(OPTION_OUTPUT_PATH));
+        FileOutputFormat.setOutputPath(job, output);
 
-            // Mapper
-            job.setInputFormatClass(SequenceFileInputFormat.class);
-            job.setMapperClass(RowKeyDistributionCheckerMapper.class);
-            job.setMapOutputKeyClass(Text.class);
-            job.setMapOutputValueClass(LongWritable.class);
+        // Mapper
+        job.setInputFormatClass(SequenceFileInputFormat.class);
+        job.setMapperClass(RowKeyDistributionCheckerMapper.class);
+        job.setMapOutputKeyClass(Text.class);
+        job.setMapOutputValueClass(LongWritable.class);
 
-            // Reducer - only one
-            job.setReducerClass(RowKeyDistributionCheckerReducer.class);
-            job.setOutputFormatClass(SequenceFileOutputFormat.class);
-            job.setOutputKeyClass(Text.class);
-            job.setOutputValueClass(LongWritable.class);
-            job.setNumReduceTasks(1);
+        // Reducer - only one
+        job.setReducerClass(RowKeyDistributionCheckerReducer.class);
+        job.setOutputFormatClass(SequenceFileOutputFormat.class);
+        job.setOutputKeyClass(Text.class);
+        job.setOutputValueClass(LongWritable.class);
+        job.setNumReduceTasks(1);
 
-            job.getConfiguration().set("rowKeyStatsFilePath", statsFilePath);
+        job.getConfiguration().set("rowKeyStatsFilePath", statsFilePath);
 
-            this.deletePath(job.getConfiguration(), output);
+        this.deletePath(job.getConfiguration(), output);
 
-            return waitForCompletion(job);
-        } catch (Exception e) {
-            printUsage(options);
-            throw e;
-        }
+        return waitForCompletion(job);
     }
 
     public static void main(String[] args) throws Exception {

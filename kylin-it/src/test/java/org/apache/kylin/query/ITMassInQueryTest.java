@@ -19,35 +19,36 @@
 package org.apache.kylin.query;
 
 import java.io.File;
+import java.nio.charset.Charset;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FSDataOutputStream;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.apache.kylin.engine.mr.HadoopUtil;
-import org.dbunit.Assertion;
-import org.dbunit.database.DatabaseConfig;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.dbunit.database.DatabaseConnection;
 import org.dbunit.database.IDatabaseConnection;
-import org.dbunit.dataset.DataSetException;
 import org.dbunit.dataset.ITable;
-import org.dbunit.ext.h2.H2Connection;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
+import org.junit.Ignore;
 import org.junit.Test;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Sets;
 
 /**
  */
 public class ITMassInQueryTest extends KylinTestBase {
+
+    private static final Logger logger = LoggerFactory.getLogger(ITMassInQueryTest.class);
 
     FileSystem fileSystem;
     Set<Long> vipSellers;
@@ -67,8 +68,7 @@ public class ITMassInQueryTest extends KylinTestBase {
         ITKylinQueryTest.joinType = "left";
         ITKylinQueryTest.setupAll();
 
-        Configuration hconf = HadoopUtil.getCurrentConfiguration();
-        fileSystem = FileSystem.get(hconf);
+        fileSystem = HadoopUtil.getWorkingFileSystem();
 
         int sellerCount = 200;
         Random r = new Random();
@@ -80,7 +80,7 @@ public class ITMassInQueryTest extends KylinTestBase {
         Path path = new Path("/tmp/vip_customers.txt");
         fileSystem.delete(path, false);
         FSDataOutputStream outputStream = fileSystem.create(path);
-        org.apache.commons.io.IOUtils.write(StringUtils.join(vipSellers, "\n"), outputStream);
+        org.apache.commons.io.IOUtils.write(StringUtils.join(vipSellers, "\n"), outputStream, Charset.defaultCharset());
         outputStream.close();
 
         System.out.println("The filter is " + vipSellers);
@@ -92,17 +92,19 @@ public class ITMassInQueryTest extends KylinTestBase {
     }
 
     @Test
+    @Ignore
     public void testMassInQuery() throws Exception {
         compare("src/test/resources/query/sql_massin", null, true);
     }
 
     @Test
+    @Ignore
     public void testMassInWithDistinctCount() throws Exception {
         run("src/test/resources/query/sql_massin_distinct", null, true);
     }
 
     protected void run(String queryFolder, String[] exclusiveQuerys, boolean needSort) throws Exception {
-        printInfo("---------- test folder: " + queryFolder);
+        logger.info("---------- test folder: " + queryFolder);
         Set<String> exclusiveSet = buildExclusiveSet(exclusiveQuerys);
 
         List<File> sqlFiles = getFilesFromFolder(new File(queryFolder), ".sql");
@@ -114,7 +116,7 @@ public class ITMassInQueryTest extends KylinTestBase {
             String sql = getTextFromFile(sqlFile);
 
             // execute Kylin
-            printInfo("Query Result from Kylin - " + queryName + "  (" + queryFolder + ")");
+            logger.info("Query Result from Kylin - " + queryName + "  (" + queryFolder + ")");
             IDatabaseConnection kylinConn = new DatabaseConnection(cubeConnection);
             ITable kylinTable = executeQuery(kylinConn, queryName, sql, needSort);
             printResult(kylinTable);
@@ -122,9 +124,8 @@ public class ITMassInQueryTest extends KylinTestBase {
         }
     }
 
-
     protected void compare(String queryFolder, String[] exclusiveQuerys, boolean needSort) throws Exception {
-        printInfo("---------- test folder: " + queryFolder);
+        logger.info("---------- test folder: " + queryFolder);
         Set<String> exclusiveSet = buildExclusiveSet(exclusiveQuerys);
 
         List<File> sqlFiles = getFilesFromFolder(new File(queryFolder), ".sql");
@@ -136,23 +137,21 @@ public class ITMassInQueryTest extends KylinTestBase {
             String sql = getTextFromFile(sqlFile);
 
             // execute Kylin
-            printInfo("Query Result from Kylin - " + queryName + "  (" + queryFolder + ")");
+            logger.info("Query Result from Kylin - " + queryName + "  (" + queryFolder + ")");
             IDatabaseConnection kylinConn = new DatabaseConnection(cubeConnection);
             ITable kylinTable = executeQuery(kylinConn, queryName, sql, needSort);
 
             // execute H2
             sql = sql.replace("massin(test_kylin_fact.SELLER_ID,'vip_customers')", "test_kylin_fact.SELLER_ID in ( " + org.apache.commons.lang.StringUtils.join(vipSellers, ",") + ")");
-            printInfo("Query Result from H2 - " + queryName);
-            printInfo("Query for H2 - " + sql);
-            H2Connection h2Conn = new H2Connection(h2Connection, null);
-            h2Conn.getConfig().setProperty(DatabaseConfig.PROPERTY_DATATYPE_FACTORY, new TestH2DataTypeFactory());
-            ITable h2Table = executeQuery(h2Conn, queryName, sql, needSort);
+            logger.info("Query Result from H2 - " + queryName);
+            logger.info("Query for H2 - " + sql);
+            ITable h2Table = executeQuery(newH2Connection(), queryName, sql, needSort);
 
             try {
                 // compare the result
-                Assertion.assertEquals(h2Table, kylinTable);
+                assertTableEquals(h2Table, kylinTable);
             } catch (Throwable t) {
-                printInfo("execAndCompQuery failed on: " + sqlFile.getAbsolutePath());
+                logger.info("execAndCompQuery failed on: " + sqlFile.getAbsolutePath());
                 throw t;
             }
         }

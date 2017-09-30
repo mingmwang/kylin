@@ -37,23 +37,26 @@ import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.util.ByteArray;
 import org.apache.kylin.common.util.Bytes;
+import org.apache.kylin.common.util.HadoopUtil;
 import org.apache.kylin.cube.CubeInstance;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.cube.CubeSegment;
-import org.apache.kylin.engine.mr.HadoopUtil;
 import org.apache.kylin.engine.mr.common.BatchConstants;
-import org.apache.kylin.engine.mr.common.CuboidStatsUtil;
+import org.apache.kylin.engine.mr.common.CubeStatsWriter;
 import org.apache.kylin.job.exception.ExecuteException;
 import org.apache.kylin.job.execution.AbstractExecutable;
 import org.apache.kylin.job.execution.ExecutableContext;
 import org.apache.kylin.job.execution.ExecuteResult;
-import org.apache.kylin.measure.hllc.HyperLogLogPlusCounter;
+import org.apache.kylin.measure.hllc.HLLCounter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.collect.Maps;
 
 public class MergeStatisticsStep extends AbstractExecutable {
+    private static final Logger logger = LoggerFactory.getLogger(MergeStatisticsStep.class);
 
-    protected Map<Long, HyperLogLogPlusCounter> cuboidHLLMap = Maps.newHashMap();
+    protected Map<Long, HLLCounter> cuboidHLLMap = Maps.newHashMap();
 
     public MergeStatisticsStep() {
         super();
@@ -93,11 +96,11 @@ public class MergeStatisticsStep extends AbstractExecutable {
                     LongWritable key = (LongWritable) ReflectionUtils.newInstance(reader.getKeyClass(), conf);
                     BytesWritable value = (BytesWritable) ReflectionUtils.newInstance(reader.getValueClass(), conf);
                     while (reader.next(key, value)) {
-                        if (key.get() == 0l) {
+                        if (key.get() == 0L) {
                             // sampling percentage;
                             averageSamplingPercentage += Bytes.toInt(value.getBytes());
                         } else if (key.get() > 0) {
-                            HyperLogLogPlusCounter hll = new HyperLogLogPlusCounter(kylinConf.getCubeStatsHLLPrecision());
+                            HLLCounter hll = new HLLCounter(kylinConf.getCubeStatsHLLPrecision());
                             ByteArray byteArray = new ByteArray(value.getBytes());
                             hll.readRegisters(byteArray.asBuffer());
 
@@ -118,9 +121,9 @@ public class MergeStatisticsStep extends AbstractExecutable {
                 }
             }
             averageSamplingPercentage = averageSamplingPercentage / CubingExecutableUtil.getMergingSegmentIds(this.getParams()).size();
-            CuboidStatsUtil.writeCuboidStatistics(conf, new Path(CubingExecutableUtil.getMergedStatisticsPath(this.getParams())), cuboidHLLMap, averageSamplingPercentage);
+            CubeStatsWriter.writeCuboidStatistics(conf, new Path(CubingExecutableUtil.getMergedStatisticsPath(this.getParams())), cuboidHLLMap, averageSamplingPercentage);
             Path statisticsFilePath = new Path(CubingExecutableUtil.getMergedStatisticsPath(this.getParams()), BatchConstants.CFG_STATISTICS_CUBOID_ESTIMATION_FILENAME);
-            FileSystem fs = statisticsFilePath.getFileSystem(conf);
+            FileSystem fs = HadoopUtil.getFileSystem(statisticsFilePath, conf);
             FSDataInputStream is = fs.open(statisticsFilePath);
             try {
                 // put the statistics to metadata store

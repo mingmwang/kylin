@@ -20,10 +20,13 @@ KylinApp.constant('cubeConfig', {
 
   //~ Define metadata & class
   measureParamType: ['column', 'constant'],
-  measureExpressions: ['SUM', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT',"TOP_N", 'RAW'],
+  measureExpressions: ['SUM', 'MIN', 'MAX', 'COUNT', 'COUNT_DISTINCT',"TOP_N", 'RAW','EXTENDED_COLUMN','PERCENTILE'],
   dimensionDataTypes: ["string", "tinyint", "int", "bigint", "date"],
-  cubeCapacities: ["SMALL", "MEDIUM", "LARGE"],
   cubePartitionTypes: ['APPEND'],
+  engineType:[
+    {name:'MapReduce',value: 2},
+    {name:'Spark (Beta)',value: 4}
+  ],
   joinTypes: [
     {name: 'Left', value: 'left'},
     {name: 'Inner', value: 'inner'}
@@ -42,30 +45,36 @@ KylinApp.constant('cubeConfig', {
     {name: 'STRING', value: 'string'}
   ],
   distinctDataTypes: [
-    {name: 'Error Rate < 9.75%', value: 'hllc10'},
-    {name: 'Error Rate < 4.88%', value: 'hllc12'},
-    {name: 'Error Rate < 2.44%', value: 'hllc14'},
-    {name: 'Error Rate < 1.72%', value: 'hllc15'},
-    {name: 'Error Rate < 1.22%', value: 'hllc16'},
-    {name: 'Precisely (Only for Integer Family column)', value: 'bitmap'}
+    {name: 'Error Rate < 9.75%', value: 'hllc(10)'},
+    {name: 'Error Rate < 4.88%', value: 'hllc(12)'},
+    {name: 'Error Rate < 2.44%', value: 'hllc(14)'},
+    {name: 'Error Rate < 1.72%', value: 'hllc(15)'},
+    {name: 'Error Rate < 1.22%', value: 'hllc(16)'},
+    {name: 'Precisely (More Memory And Storage Needed)', value: 'bitmap'}
   ],
   topNTypes: [
     {name: 'Top 10', value: "topn(10)"},
     {name: 'Top 100', value: "topn(100)"},
-    {name: 'Top 1000', value: "topn(1000)"}
+    {name: 'Top 500', value: "topn(500)"},
+    {name: 'Top 1000', value: "topn(1000)"},
+    {name: 'Top 5000', value: "topn(5000)"},
+    {name: 'Top 10000', value: "topn(10000)"}
   ],
   dftSelections: {
     measureExpression: 'SUM',
     measureParamType: 'column',
     measureDataType: {name: 'BIGINT', value: 'bigint'},
     distinctDataType: {name: 'Error Rate < 4.88%', value: 'hllc12'},
-    cubeCapacity: 'MEDIUM',
     queryPriority: {name: 'NORMAL', value: 50},
     cubePartitionType: 'APPEND',
     topN:{name: 'Top 100', value: "topn(100)"}
   },
     dictionaries: ["true", "false"],
-    encodings:["dict","fixed_length","int"],
+    encodings:[
+      {name:"dict",value:"value"},
+      {name:"fixed_length",value:"fixed_length"},
+      {name:"int (deprecated)",value:"int"}
+    ],
     intEncodingOptions: [1,2,3,4,5,6,7,8],
 //    cubes config
   theaditems: [
@@ -88,7 +97,8 @@ KylinApp.constant('cubeConfig', {
   ],
   partitionDateFormatOpt:[
     'yyyy-MM-dd',
-    'yyyyMMdd'
+    'yyyyMMdd',
+    'yyyy-MM-dd HH:mm:ss'
   ],
   partitionTimeFormatOpt:[
     'HH:mm:ss',
@@ -98,5 +108,10 @@ KylinApp.constant('cubeConfig', {
   rowKeyShardOptions:[
     true,false
   ],
-  statusNeedNofity:['ERROR', 'DISCARDED', 'SUCCEED']
+  statusNeedNofity:['ERROR', 'DISCARDED', 'SUCCEED'],
+  buildDictionaries:[
+    {name:"Global Dictionary", value:"org.apache.kylin.dict.GlobalDictionaryBuilder"},
+    {name:"Segment Dictionary", value:"org.apache.kylin.dict.global.SegmentAppendTrieDictBuilder"}
+  ],
+  needSetLengthEncodingList:['fixed_length','fixed_length_hex','int','integer']
 });

@@ -18,101 +18,72 @@
 
 package org.apache.kylin.storage.hbase.util;
 
-import java.util.Arrays;
-import java.util.concurrent.TimeUnit;
+import java.io.Closeable;
+import java.util.concurrent.Executor;
 
-import javax.annotation.Nullable;
-
-import org.apache.commons.lang.StringUtils;
-import org.apache.curator.RetryPolicy;
-import org.apache.curator.framework.CuratorFramework;
-import org.apache.curator.framework.CuratorFrameworkFactory;
-import org.apache.curator.framework.imps.CuratorFrameworkState;
-import org.apache.curator.framework.recipes.locks.InterProcessMutex;
-import org.apache.curator.retry.ExponentialBackoffRetry;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HConstants;
-import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.lock.DistributedLock;
 import org.apache.kylin.job.lock.JobLock;
-import org.apache.kylin.storage.hbase.HBaseConnection;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import com.google.common.base.Function;
-import com.google.common.collect.Iterables;
 
 /**
+ * A simple delegator to ZookeeperDistributedLock with a default constructor.
  */
-public class ZookeeperJobLock implements JobLock {
-    private Logger logger = LoggerFactory.getLogger(ZookeeperJobLock.class);
+public class ZookeeperJobLock implements DistributedLock, JobLock {
 
-    private static final String ZOOKEEPER_LOCK_PATH = "/kylin/job_engine/lock";
-
-    private String scheduleID;
-    private InterProcessMutex sharedLock;
-    private CuratorFramework zkClient;
+    private ZookeeperDistributedLock lock = (ZookeeperDistributedLock) new ZookeeperDistributedLock.Factory().lockForCurrentProcess();
 
     @Override
-    public boolean lock() {
-        this.scheduleID = schedulerId();
-        String zkConnectString = getZKConnectString();
-        logger.info("zk connection string:" + zkConnectString);
-        logger.info("schedulerId:" + scheduleID);
-        if (StringUtils.isEmpty(zkConnectString)) {
-            throw new IllegalArgumentException("ZOOKEEPER_QUORUM is empty!");
-        }
-
-        RetryPolicy retryPolicy = new ExponentialBackoffRetry(1000, 3);
-        this.zkClient = CuratorFrameworkFactory.newClient(zkConnectString, retryPolicy);
-        this.zkClient.start();
-        this.sharedLock = new InterProcessMutex(zkClient, this.scheduleID);
-        boolean hasLock = false;
-        try {
-            hasLock = sharedLock.acquire(3, TimeUnit.SECONDS);
-        } catch (Exception e) {
-            logger.warn("error acquire lock", e);
-        }
-        if (!hasLock) {
-            logger.warn("fail to acquire lock, scheduler has not been started");
-            zkClient.close();
-            return false;
-        }
-        return true;
+    public String getClient() {
+        return lock.getClient();
     }
 
     @Override
-    public void unlock() {
-        releaseLock();
+    public boolean lock(String lockPath) {
+        return lock.lock(lockPath);
     }
 
-    private String getZKConnectString() {
-        Configuration conf = HBaseConnection.getCurrentHBaseConfiguration();
-        final String serverList = conf.get(HConstants.ZOOKEEPER_QUORUM);
-        final String port = conf.get(HConstants.ZOOKEEPER_CLIENT_PORT);
-        return org.apache.commons.lang3.StringUtils.join(Iterables.transform(Arrays.asList(serverList.split(",")), new Function<String, String>() {
-            @Nullable
-            @Override
-            public String apply(String input) {
-                return input + ":" + port;
-            }
-        }), ",");
+    @Override
+    public boolean lock(String lockPath, long timeout) {
+        return lock.lock(lockPath, timeout);
     }
 
-    private void releaseLock() {
-        try {
-            if (zkClient.getState().equals(CuratorFrameworkState.STARTED)) {
-                // client.setData().forPath(ZOOKEEPER_LOCK_PATH, null);
-                if (zkClient.checkExists().forPath(scheduleID) != null) {
-                    zkClient.delete().guaranteed().deletingChildrenIfNeeded().forPath(scheduleID);
-                }
-            }
-        } catch (Exception e) {
-            logger.error("error release lock:" + scheduleID);
-            throw new RuntimeException(e);
-        }
+    @Override
+    public String peekLock(String lockPath) {
+        return lock.peekLock(lockPath);
     }
 
-    private String schedulerId() {
-        return ZOOKEEPER_LOCK_PATH + "/" + KylinConfig.getInstanceFromEnv().getMetadataUrlPrefix();
+    @Override
+    public boolean isLocked(String lockPath) {
+        return lock.isLocked(lockPath);
     }
+
+    @Override
+    public boolean isLockedByMe(String lockPath) {
+        return lock.isLockedByMe(lockPath);
+    }
+
+    @Override
+    public void unlock(String lockPath) {
+        lock.unlock(lockPath);
+    }
+
+    @Override
+    public void purgeLocks(String lockPathRoot) {
+        lock.purgeLocks(lockPathRoot);
+    }
+
+    @Override
+    public Closeable watchLocks(String lockPathRoot, Executor executor, Watcher watcher) {
+        return lock.watchLocks(lockPathRoot, executor, watcher);
+    }
+
+    @Override
+    public boolean lockJobEngine() {
+        return lock.lockJobEngine();
+    }
+
+    @Override
+    public void unlockJobEngine() {
+        lock.unlockJobEngine();
+    }
+
 }

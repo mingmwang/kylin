@@ -249,43 +249,50 @@ KylinApp.directive('kylinPagination', function ($parse, $q) {
       }
     };
   }).directive('dateTimepickerTimezone', function () {
-  // this directive workaround to convert GMT0 timestamp to GMT date for datepicker
-  return {
-    restrict: 'A',
-    priority: 1,
-    require: 'ngModel',
-    link: function (scope, element, attrs, ctrl) {
-      ctrl.$formatters.push(function (value) {
+    return {
+      restrict: 'A',
+      priority: 1,
+      require: 'ngModel',
+      link: function (scope, element, attrs, ctrl) {
+        ctrl.$formatters.push(function (value) {
 
-        //set null for 0
-        if(value===0){
-          return '';
-        }
+          //set null for 0
+          if(value===0){
+            return '';
+          }
 
-        //return value;
-        var newDate = new Date(value + (60000 * new Date().getTimezoneOffset()));
+          //return value;
+          var newDate = new Date(value);
+          var year = newDate.getUTCFullYear();
+          var month = (newDate.getUTCMonth()+1)<10?'0'+(newDate.getUTCMonth()+1):(newDate.getUTCMonth()+1);
+          var date = newDate.getUTCDate()<10?'0'+newDate.getUTCDate():newDate.getUTCDate();
+          var hour = newDate.getUTCHours()<10?'0'+newDate.getUTCHours():newDate.getUTCHours();
+          var mins = newDate.getUTCMinutes()<10?'0'+newDate.getUTCMinutes():newDate.getUTCMinutes();
+          var seconds = newDate.getUTCSeconds()<10?'0'+newDate.getUTCSeconds():newDate.getUTCSeconds();
+          var viewVal = year+"-"+month+"-"+date+" "+hour+":"+mins+":"+seconds;
+          return viewVal;
+        });
 
-        var year = newDate.getFullYear();
-        var month = (newDate.getMonth()+1)<10?'0'+(newDate.getMonth()+1):(newDate.getMonth()+1);
-        var date = newDate.getDate()<10?'0'+newDate.getDate():newDate.getDate();
-
-        var hour = newDate.getHours()<10?'0'+newDate.getHours():newDate.getHours();
-        var mins = newDate.getMinutes()<10?'0'+newDate.getMinutes():newDate.getMinutes();
-        var seconds = newDate.getSeconds()<10?'0'+newDate.getSeconds():getSeconds();
-
-        var viewVal = year+"-"+month+"-"+date+" "+hour+":"+mins+":"+seconds;
-        return viewVal;
-      });
-
-      ctrl.$parsers.push(function (value) {
-        if (isNaN(value)||value==null) {
-          return value;
-        }
-        //value = new Date(value.getFullYear(), value.getMonth(), value.getDate(), 0, 0, 0, 0);
-        return value.getTime()-(60000 * value.getTimezoneOffset());
-      });
-    }
-  };
+        ctrl.$parsers.push(function (value) {
+          var date;
+          if(/^\d{4}-\d{1,2}-\d{1,2}(\s+\d{1,2}:\d{1,2}:\d{1,2})?$/.test(value)) {
+            date=new Date(value);
+            if(!date||date&&!date.getTime()){
+              return value;
+            }else{
+              var dateSplit=value.replace(/^\s+|\s+$/,'').replace(/\s+/,'-').split(/[:-]/);
+              var resultDate=[];
+              for(var i=0;i<6;i++){
+                resultDate[i]=dateSplit[i]||0;
+              }
+              return Date.UTC(resultDate[0],resultDate[1]-1,resultDate[2],resultDate[3],resultDate[4],resultDate[5]);
+            }
+          }else{
+            return value;
+          }
+        });
+      }
+    };
 }).directive("parametertree", function($compile) {
     return {
       restrict: "E",
@@ -295,7 +302,30 @@ KylinApp.directive('kylinPagination', function ($parse, $q) {
       },
       template:
       '<li class="parent_li">Value:<b>{{nextpara.value}}</b>, Type:<b>{{ nextpara.type }}</b></li>' +
-       '<parametertree ng-if="nextpara.next_parameter!=null" nextpara="nextpara.next_parameter"></parameterTree>',
+      '<parametertree ng-if="nextpara.next_parameter!=null" nextpara="nextpara.next_parameter"></parameterTree>',
+      compile: function(tElement, tAttr, transclude) {
+        var contents = tElement.contents().remove();
+        var compiledContents;
+        return function(scope, iElement, iAttr) {
+          if(!compiledContents) {
+            compiledContents = $compile(contents, transclude);
+          }
+          compiledContents(scope, function(clone, scope) {
+            iElement.append(clone);
+          });
+        };
+      }
+    };
+  }).directive("groupbytree", function($compile) {
+    return {
+      restrict: "E",
+      transclude: true,
+      scope: {
+        nextpara: '=',
+      },
+      template:
+      '<b>{{nextpara.value}}<b ng-if="nextpara.next_parameter!=null">,</b></b>'+
+      '<groupbytree ng-if="nextpara.next_parameter!=null" nextpara="nextpara.next_parameter"></groupbytree>',
       compile: function(tElement, tAttr, transclude) {
         var contents = tElement.contents().remove();
         var compiledContents;
@@ -318,7 +348,9 @@ KylinApp.directive('kylinPagination', function ($parse, $q) {
     },
     template:
     '<li class="parent_li">SUM|ORDER BY:<b>{{nextpara.value}}</b></b></li>' +
-    '<li class="parent_li">GROUP BY:<b>{{nextpara.next_parameter.value}}</b></li>',
+    '<li class="parent_li">Group By:'+
+    '<groupbytree nextpara="nextpara.next_parameter"></groupbytree>'+
+    '</li>',
     compile: function(tElement, tAttr, transclude) {
       var contents = tElement.contents().remove();
       var compiledContents;
@@ -332,4 +364,70 @@ KylinApp.directive('kylinPagination', function ($parse, $q) {
       };
     }
   };
+}).directive("extendedcolumntree", function($compile) {
+  return {
+    restrict: "E",
+    transclude: true,
+    scope: {
+      nextpara: '='
+    },
+    template:
+    '<li class="parent_li">Host Column:<b>{{nextpara.value}}</b></b></li>' +
+    '<li class="parent_li">Extended Column:<b>{{nextpara.next_parameter.value}}</b></li>',
+    compile: function(tElement, tAttr, transclude) {
+      var contents = tElement.contents().remove();
+      var compiledContents;
+      return function(scope, iElement, iAttr) {
+        if(!compiledContents) {
+          compiledContents = $compile(contents, transclude);
+        }
+        compiledContents(scope, function(clone, scope) {
+          iElement.append(clone);
+        });
+      };
+    }
+  };
+}).directive('kylinpopover', function ($compile,$templateCache) {
+  return {
+    restrict: "A",
+    link: function (scope, element, attrs) {
+      var popOverContent;
+      var dOptions = {
+        placement : 'right'
+      }
+      popOverContent = $templateCache.get(attrs.template);
+
+      var placement = attrs.placement? attrs.placement : dOptions.placement;
+      var title = attrs.title;
+
+      var options = {
+        content: popOverContent,
+        placement: placement,
+        trigger: "hover",
+        title: title,
+        html: true
+      };
+      $(element).popover(options);
+    }
+  };
+}).directive('extendedColumnReturn', function() {
+  return {
+    require: 'ngModel',
+    link: function(scope, element, attrs, ngModelController) {
+
+      var prefix = "extendedcolumn(";
+      var suffix = ")";
+      ngModelController.$parsers.push(function(data) {
+        //convert data from view format to model format
+        return prefix +data+suffix; //converted
+      });
+
+      ngModelController.$formatters.push(function(data) {
+        //convert data from model format to view format
+        var prefixIndex = data.indexOf("(")+1;
+        var suffixIndex = data.indexOf(")");
+        return data.substring(prefixIndex,suffixIndex); //converted
+      });
+    }
+  }
 });

@@ -20,19 +20,25 @@ package org.apache.kylin.metadata.project;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.JsonSerializer;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.Serializer;
-import org.apache.kylin.common.restclient.Broadcaster;
-import org.apache.kylin.common.restclient.CaseInsensitiveStringCache;
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.badquery.BadQueryHistoryManager;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
 import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.ExternalFilterDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
@@ -42,12 +48,15 @@ import org.apache.kylin.metadata.realization.RealizationType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.base.Preconditions;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 
 public class ProjectManager {
     private static final Logger logger = LoggerFactory.getLogger(ProjectManager.class);
-    private static final ConcurrentHashMap<KylinConfig, ProjectManager> CACHE = new ConcurrentHashMap<KylinConfig, ProjectManager>();
-    public static final Serializer<ProjectInstance> PROJECT_SERIALIZER = new JsonSerializer<ProjectInstance>(ProjectInstance.class);
+    private static final ConcurrentMap<KylinConfig, ProjectManager> CACHE = new ConcurrentHashMap<KylinConfig, ProjectManager>();
+    public static final Serializer<ProjectInstance> PROJECT_SERIALIZER = new JsonSerializer<ProjectInstance>(
+            ProjectInstance.class);
 
     public static ProjectManager getInstance(KylinConfig config) {
         ProjectManager r = CACHE.get(config);
@@ -87,10 +96,35 @@ public class ProjectManager {
     private ProjectManager(KylinConfig config) throws IOException {
         logger.info("Initializing ProjectManager with metadata url " + config);
         this.config = config;
-        this.projectMap = new CaseInsensitiveStringCache<ProjectInstance>(config, Broadcaster.TYPE.PROJECT);
+        this.projectMap = new CaseInsensitiveStringCache<ProjectInstance>(config, "project");
         this.l2Cache = new ProjectL2Cache(this);
 
+        // touch lower level metadata before registering my listener
         reloadAllProjects();
+        Broadcaster.getInstance(config).registerListener(new ProjectSyncListener(), "project");
+    }
+
+    private class ProjectSyncListener extends Broadcaster.Listener {
+
+        @Override
+        public void onClearAll(Broadcaster broadcaster) throws IOException {
+            clearCache();
+        }
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey)
+                throws IOException {
+            String project = cacheKey;
+
+            if (event == Event.DROP) {
+                removeProjectLocal(project);
+                return;
+            }
+
+            reloadProjectLocal(project);
+            broadcaster.notifyProjectSchemaUpdate(project);
+            broadcaster.notifyProjectDataUpdate(project);
+        }
     }
 
     public void clearL2Cache() {
@@ -101,7 +135,8 @@ public class ProjectManager {
         ResourceStore store = getStore();
         List<String> paths = store.collectResourceRecursively(ResourceStore.PROJECT_RESOURCE_ROOT, ".json");
 
-        logger.debug("Loading Project from folder " + store.getReadableResourcePath(ResourceStore.PROJECT_RESOURCE_ROOT));
+        logger.debug(
+                "Loading Project from folder " + store.getReadableResourcePath(ResourceStore.PROJECT_RESOURCE_ROOT));
 
         for (String path : paths) {
             reloadProjectLocalAt(path);
@@ -114,7 +149,6 @@ public class ProjectManager {
     }
 
     private ProjectInstance reloadProjectLocalAt(String path) throws IOException {
-
         ProjectInstance projectInstance = getStore().getResource(path, ProjectInstance.class, PROJECT_SERIALIZER);
         if (projectInstance == null) {
             logger.warn("reload project at path:" + path + " not found, this:" + this.toString());
@@ -138,12 +172,22 @@ public class ProjectManager {
         return projectMap.get(projectName);
     }
 
-    public ProjectInstance createProject(String projectName, String owner, String description) throws IOException {
+    public ProjectInstance getPrjByUuid(String uuid) {
+        Collection<ProjectInstance> copy = new ArrayList<ProjectInstance>(projectMap.values());
+        for (ProjectInstance prj : copy) {
+            if (uuid.equals(prj.getUuid()))
+                return prj;
+        }
+        return null;
+    }
+
+    public ProjectInstance createProject(String projectName, String owner, String description,
+            LinkedHashMap<String, String> overrideProps) throws IOException {
         logger.info("Creating project " + projectName);
 
         ProjectInstance currentProject = getProject(projectName);
         if (currentProject == null) {
-            currentProject = ProjectInstance.create(projectName, owner, description, null, null);
+            currentProject = ProjectInstance.create(projectName, owner, description, overrideProps, null, null);
         } else {
             throw new IllegalStateException("The project named " + projectName + "already exists");
         }
@@ -164,7 +208,8 @@ public class ProjectManager {
         }
 
         if (projectInstance.getRealizationCount(null) != 0) {
-            throw new IllegalStateException("The project named " + projectName + " can not be deleted because there's still realizations in it. Delete them first.");
+            throw new IllegalStateException("The project named " + projectName
+                    + " can not be deleted because there's still realizations in it. Delete them first.");
         }
 
         logger.info("Dropping project '" + projectInstance.getName() + "'");
@@ -182,35 +227,58 @@ public class ProjectManager {
         }
     }
 
+    // rename project
+    public ProjectInstance renameProject(ProjectInstance project, String newName, String newDesc,
+            LinkedHashMap<String, String> overrideProps) throws IOException {
+        Preconditions.checkArgument(!project.getName().equals(newName));
+        ProjectInstance newProject = this.createProject(newName, project.getOwner(), newDesc, overrideProps);
+
+        newProject.setUuid(project.getUuid());
+        newProject.setCreateTimeUTC(project.getCreateTimeUTC());
+        newProject.recordUpdateTime(System.currentTimeMillis());
+        newProject.setRealizationEntries(project.getRealizationEntries());
+        newProject.setTables(project.getTables());
+        newProject.setModels(project.getModels());
+        newProject.setExtFilters(project.getExtFilters());
+
+        removeProject(project);
+        updateProject(newProject);
+
+        return newProject;
+    }
+
     //update project itself
-    public ProjectInstance updateProject(ProjectInstance project, String newName, String newDesc) throws IOException {
-        if (!project.getName().equals(newName)) {
-            ProjectInstance newProject = this.createProject(newName, project.getOwner(), newDesc);
+    public ProjectInstance updateProject(ProjectInstance project, String newName, String newDesc,
+            LinkedHashMap<String, String> overrideProps) throws IOException {
+        Preconditions.checkArgument(project.getName().equals(newName));
+        project.setName(newName);
+        project.setDescription(newDesc);
+        project.setOverrideKylinProps(overrideProps);
 
-            newProject.setCreateTimeUTC(project.getCreateTimeUTC());
-            newProject.recordUpdateTime(System.currentTimeMillis());
-            newProject.setRealizationEntries(project.getRealizationEntries());
-            newProject.setTables(project.getTables());
+        if (project.getUuid() == null)
+            project.updateRandomUuid();
 
-            removeProject(project);
-            updateProject(newProject);
+        updateProject(project);
 
-            return newProject;
-        } else {
-            project.setName(newName);
-            project.setDescription(newDesc);
-
-            if (project.getUuid() == null)
-                project.updateRandomUuid();
-
-            updateProject(project);
-
-            return project;
-        }
+        return project;
     }
 
     private void updateProject(ProjectInstance prj) throws IOException {
         synchronized (prj) {
+            LinkedHashMap<String, String> overrideProps = prj.getOverrideKylinProps();
+
+            if (overrideProps != null) {
+                Iterator<Map.Entry<String, String>> iterator = overrideProps.entrySet().iterator();
+
+                while (iterator.hasNext()) {
+                    Map.Entry<String, String> entry = iterator.next();
+
+                    if (StringUtils.isAnyBlank(entry.getKey(), entry.getValue())) {
+                        throw new IllegalStateException("Property key/value must not be blank");
+                    }
+                }
+            }
+
             getStore().putResource(prj.getResourcePath(), prj, PROJECT_SERIALIZER);
             projectMap.put(norm(prj.getName()), prj); // triggers update broadcast
             clearL2Cache();
@@ -220,6 +288,11 @@ public class ProjectManager {
     private void removeProject(ProjectInstance proj) throws IOException {
         getStore().deleteResource(proj.getResourcePath());
         projectMap.remove(norm(proj.getName()));
+        clearL2Cache();
+    }
+
+    private void removeProjectLocal(String proj) {
+        projectMap.remove(norm(proj));
         clearL2Cache();
     }
 
@@ -233,7 +306,7 @@ public class ProjectManager {
     }
 
     public void removeModelFromProjects(String modelName) throws IOException {
-        for (ProjectInstance projectInstance : findProjects(modelName)) {
+        for (ProjectInstance projectInstance : findProjectsByModel(modelName)) {
             projectInstance.removeModel(modelName);
             updateProject(projectInstance);
         }
@@ -251,16 +324,24 @@ public class ProjectManager {
         return newProject;
     }
 
-    public ProjectInstance moveRealizationToProject(RealizationType type, String realizationName, String newProjectName, String owner) throws IOException {
+    public ProjectInstance moveRealizationToProject(RealizationType type, String realizationName, String newProjectName,
+            String owner) throws IOException {
         removeRealizationsFromProjects(type, realizationName);
         return addRealizationToProject(type, realizationName, newProjectName, owner);
     }
 
-    private ProjectInstance addRealizationToProject(RealizationType type, String realizationName, String project, String user) throws IOException {
+    private ProjectInstance addRealizationToProject(RealizationType type, String realizationName, String project,
+            String user) throws IOException {
         String newProjectName = norm(project);
+        if (StringUtils.isEmpty(newProjectName)) {
+            throw new IllegalArgumentException("Project name should not be empty.");
+        }
         ProjectInstance newProject = getProject(newProjectName);
         if (newProject == null) {
-            newProject = this.createProject(newProjectName, user, "This is a project automatically added when adding realization " + realizationName + "(" + type + ")");
+            newProject = this.createProject(newProjectName, user,
+                    "This is a project automatically added when adding realization " + realizationName + "(" + type
+                            + ")",
+                    null);
         }
         newProject.addRealizationEntry(type, realizationName);
         updateProject(newProject);
@@ -279,7 +360,7 @@ public class ProjectManager {
         MetadataManager metaMgr = getMetadataManager();
         ProjectInstance projectInstance = getProject(projectName);
         for (String tableId : tableIdentities) {
-            TableDesc table = metaMgr.getTableDesc(tableId);
+            TableDesc table = metaMgr.getTableDesc(tableId, projectName);
             if (table == null) {
                 throw new IllegalStateException("Cannot find table '" + table + "' in metadata manager");
             }
@@ -293,7 +374,7 @@ public class ProjectManager {
     public void removeTableDescFromProject(String tableIdentities, String projectName) throws IOException {
         MetadataManager metaMgr = getMetadataManager();
         ProjectInstance projectInstance = getProject(projectName);
-        TableDesc table = metaMgr.getTableDesc(tableIdentities);
+        TableDesc table = metaMgr.getTableDesc(tableIdentities, projectName);
         if (table == null) {
             throw new IllegalStateException("Cannot find table '" + table + "' in metadata manager");
         }
@@ -329,11 +410,19 @@ public class ProjectManager {
         updateProject(projectInstance);
     }
 
+    public ProjectInstance getProjectOfModel(String model) {
+        for (ProjectInstance prj : projectMap.values()) {
+            if (prj.getModels().contains(model))
+                return prj;
+        }
+        throw new IllegalStateException("No project found for model " + model);
+    }
+
     public List<ProjectInstance> findProjects(RealizationType type, String realizationName) {
         List<ProjectInstance> result = Lists.newArrayList();
         for (ProjectInstance prj : projectMap.values()) {
             for (RealizationEntry entry : prj.getRealizationEntries()) {
-                if (entry.getType().equals(type) && entry.getRealization().equalsIgnoreCase(realizationName)) {
+                if (entry.getType().equals(type) && entry.getRealization().equals(realizationName)) {
                     result.add(prj);
                     break;
                 }
@@ -342,15 +431,33 @@ public class ProjectManager {
         return result;
     }
 
-    private List<ProjectInstance> findProjects(String modelName) {
+    public List<ProjectInstance> findProjectsByModel(String modelName) {
         List<ProjectInstance> projects = new ArrayList<ProjectInstance>();
         for (ProjectInstance projectInstance : projectMap.values()) {
             if (projectInstance.containsModel(modelName)) {
                 projects.add(projectInstance);
             }
         }
-
         return projects;
+    }
+
+    public List<ProjectInstance> findProjectsByTable(String tableIdentity) {
+        List<ProjectInstance> projects = new ArrayList<ProjectInstance>();
+        for (ProjectInstance projectInstance : projectMap.values()) {
+            if (projectInstance.containsTable(tableIdentity)) {
+                projects.add(projectInstance);
+            }
+        }
+        return projects;
+    }
+
+    public ProjectInstance getProjectByUuid(String uuid) {
+        Collection<ProjectInstance> copy = new ArrayList<ProjectInstance>(projectMap.values());
+        for (ProjectInstance project : copy) {
+            if (uuid.equals(project.getUuid()))
+                return project;
+        }
+        return null;
     }
 
     public ExternalFilterDesc getExternalFilterDesc(String project, String extFilter) {
@@ -361,24 +468,39 @@ public class ProjectManager {
         return l2Cache.listExternalFilterDesc(project);
     }
 
-    public List<TableDesc> listDefinedTables(String project) throws IOException {
+    public List<TableDesc> listDefinedTables(String project) {
         return l2Cache.listDefinedTables(norm(project));
     }
 
-    public Set<TableDesc> listExposedTables(String project) {
-        return l2Cache.listExposedTables(norm(project));
+    public Collection<TableDesc> listExposedTables(String project) {
+        return config.isPushDownEnabled() ? //
+                this.listDefinedTables(project) : //
+                l2Cache.listExposedTables(norm(project));
     }
 
-    public Set<ColumnDesc> listExposedColumns(String project, String table) {
-        return l2Cache.listExposedColumns(norm(project), table);
+    public List<ColumnDesc> listExposedColumns(String project, TableDesc tableDesc, boolean exposeMore) {
+        Set<ColumnDesc> exposedColumns = l2Cache.listExposedColumns(norm(project), tableDesc.getIdentity());
+
+        if (exposeMore) {
+            Set<ColumnDesc> dedup = Sets.newHashSet(tableDesc.getColumns());
+            dedup.addAll(exposedColumns);
+            return Lists.newArrayList(dedup);
+        } else {
+            return Lists.newArrayList(exposedColumns);
+        }
     }
 
     public boolean isExposedTable(String project, String table) {
-        return l2Cache.isExposedTable(norm(project), table);
+        return config.isPushDownEnabled() ? //
+                l2Cache.isDefinedTable(norm(project), table) : //
+                l2Cache.isExposedTable(norm(project), table);
     }
 
     public boolean isExposedColumn(String project, String table, String col) {
-        return l2Cache.isExposedColumn(norm(project), table, col);
+        return config.isPushDownEnabled() ? //
+                l2Cache.isDefinedColumn(norm(project), table, col) || l2Cache.isExposedColumn(norm(project), table, col)
+                : //
+                l2Cache.isExposedColumn(norm(project), table, col);
     }
 
     public Set<IRealization> listAllRealizations(String project) {
@@ -387,10 +509,6 @@ public class ProjectManager {
 
     public Set<IRealization> getRealizationsByTable(String project, String tableName) {
         return l2Cache.getRealizationsByTable(norm(project), tableName.toUpperCase());
-    }
-
-    public List<IRealization> getOnlineRealizationByFactTable(String project, String factTable) {
-        return l2Cache.getOnlineRealizationByFactTable(norm(project), factTable.toUpperCase());
     }
 
     public List<MeasureDesc> listEffectiveRewriteMeasures(String project, String factTable) {

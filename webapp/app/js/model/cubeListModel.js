@@ -25,22 +25,15 @@ KylinApp.service('CubeList',function(CubeService,$q,AccessService){
         var defer = $q.defer();
         CubeService.list(queryParam, function (_cubes) {
             angular.forEach(_cubes, function (cube, index) {
-                AccessService.list({type: "CubeInstance", uuid: cube.uuid}, function (accessEntities) {
-                    cube.accessEntities = accessEntities;
-                });
-
                 if(cube.name){
+                    cube.last_build_time = undefined;
                     if (cube.segments && cube.segments.length > 0) {
                         for(var i= cube.segments.length-1;i>=0;i--){
                             if(cube.segments[i].status==="READY"){
-                                cube.last_build_time = cube.segments[i].last_build_time;
-                                break;
-                            }else if(i===0){
-                                cube.last_build_time = undefined;
+                                if(cube.last_build_time===undefined || cube.last_build_time<cube.segments[i].last_build_time)
+                                    cube.last_build_time = cube.segments[i].last_build_time;
                             }
                         }
-                    } else {
-                        cube.last_build_time = undefined;
                     }
                 }
             });
@@ -51,7 +44,6 @@ KylinApp.service('CubeList',function(CubeService,$q,AccessService){
             defer.reject("Failed to load cubes");
         });
         return defer.promise;
-
     };
 
     this.removeCube = function(cube){

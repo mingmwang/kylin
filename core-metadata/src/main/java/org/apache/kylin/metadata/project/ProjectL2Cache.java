@@ -25,6 +25,7 @@ import java.util.Set;
 
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.model.ColumnDesc;
+import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.ExternalFilterDesc;
 import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
@@ -32,6 +33,7 @@ import org.apache.kylin.metadata.model.TableDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.realization.IRealization;
 import org.apache.kylin.metadata.realization.RealizationRegistry;
+import org.apache.kylin.metadata.realization.RealizationType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -92,12 +94,32 @@ class ProjectL2Cache {
             return Collections.unmodifiableSet(tableCache.exposedColumns);
     }
 
+    public boolean isDefinedTable(String project, String table) {
+        TableCache tableCache = getCache(project).tables.get(table);
+        if (tableCache == null)
+            return false;
+        else
+            return true;
+    }
+
     public boolean isExposedTable(String project, String table) {
         TableCache tableCache = getCache(project).tables.get(table);
         if (tableCache == null)
             return false;
         else
             return tableCache.exposed;
+    }
+
+    public boolean isDefinedColumn(String project, String table, String col) {
+        TableCache tableCache = getCache(project).tables.get(table);
+        if (tableCache == null)
+            return false;
+
+        for (ColumnDesc colDesc : tableCache.tableDesc.getColumns()) {
+            if (colDesc.getName().equals(col))
+                return true;
+        }
+        return false;
     }
 
     public boolean isExposedColumn(String project, String table, String col) {
@@ -125,34 +147,30 @@ class ProjectL2Cache {
             return Collections.unmodifiableSet(tableCache.realizations);
     }
 
-    public List<IRealization> getOnlineRealizationByFactTable(String project, String factTable) {
-        Set<IRealization> realizations = getRealizationsByTable(project, factTable);
-        List<IRealization> result = Lists.newArrayListWithCapacity(realizations.size());
-        for (IRealization r : realizations) {
-            if (r.getFactTable().equalsIgnoreCase(factTable) && r.isReady()) {
-                result.add(r);
-            }
-        }
-        return result;
-    }
-
-    public List<MeasureDesc> listEffectiveRewriteMeasures(String project, String factTable, boolean onlyRewriteMeasure) {
-        Set<IRealization> realizations = getRealizationsByTable(project, factTable);
+    public List<MeasureDesc> listEffectiveRewriteMeasures(String project, String table, boolean onlyRewriteMeasure) {
+        Set<IRealization> realizations = getRealizationsByTable(project, table);
         List<MeasureDesc> result = Lists.newArrayList();
         for (IRealization r : realizations) {
-            if (r.getFactTable().equalsIgnoreCase(factTable) && r.isReady()) {
-                for (MeasureDesc m : r.getMeasures()) {
-                    FunctionDesc func = m.getFunction();
-                    if (onlyRewriteMeasure) {
-                        if (func.needRewrite())
-                            result.add(m);
-                    } else {
+            if (!r.isReady())
+                continue;
+
+            for (MeasureDesc m : r.getMeasures()) {
+                FunctionDesc func = m.getFunction();
+                if (belongToTable(func, table, r.getModel())) {
+                    if (!onlyRewriteMeasure || func.needRewrite()) {
                         result.add(m);
                     }
                 }
             }
         }
         return result;
+    }
+
+    private boolean belongToTable(FunctionDesc func, String table, DataModelDesc model) {
+        // measure belong to the first column parameter's table
+        List<TblColRef> cols = func.getParameter().getColRefs();
+        String belongTo = cols.isEmpty() ? model.getRootFactTable().getTableIdentity() : cols.get(0).getTable();
+        return belongTo.equals(table);
     }
 
     // ============================================================================
@@ -170,7 +188,7 @@ class ProjectL2Cache {
     }
 
     private ProjectCache loadCache(String project) {
-        logger.info("Loading L2 project cache for " + project);
+        logger.debug("Loading L2 project cache for " + project);
         ProjectCache projectCache = new ProjectCache(project);
 
         ProjectInstance pi = mgr.getProject(project);
@@ -181,7 +199,7 @@ class ProjectL2Cache {
         MetadataManager metaMgr = mgr.getMetadataManager();
 
         for (String tableName : pi.getTables()) {
-            TableDesc tableDesc = metaMgr.getTableDesc(tableName);
+            TableDesc tableDesc = metaMgr.getTableDesc(tableName, project);
             if (tableDesc != null) {
                 projectCache.tables.put(tableDesc.getIdentity(), new TableCache(tableDesc));
             } else {
@@ -206,6 +224,13 @@ class ProjectL2Cache {
             } else {
                 logger.warn("Realization '" + entry + "' defined under project '" + project + "' is not found");
             }
+
+            //check if there's raw table parasite
+            //TODO: ugly impl here
+            IRealization parasite = registry.getRealization(RealizationType.INVERTED_INDEX, entry.getRealization());
+            if (parasite != null) {
+                projectCache.realizations.add(parasite);
+            }
         }
 
         for (IRealization realization : projectCache.realizations) {
@@ -225,22 +250,27 @@ class ProjectL2Cache {
 
         MetadataManager metaMgr = mgr.getMetadataManager();
 
-        List<TblColRef> allColumns = realization.getAllColumns();
+        Set<TblColRef> allColumns = realization.getAllColumns();
         if (allColumns == null || allColumns.isEmpty()) {
             logger.error("Realization '" + realization.getCanonicalName() + "' does not report any columns");
             return false;
         }
 
         for (TblColRef col : allColumns) {
-            TableDesc table = metaMgr.getTableDesc(col.getTable());
+            TableDesc table = metaMgr.getTableDesc(col.getTable(), prjCache.project);
             if (table == null) {
                 logger.error("Realization '" + realization.getCanonicalName() + "' reports column '" + col.getCanonicalName() + "', but its table is not found by MetadataManager");
                 return false;
             }
-            ColumnDesc foundCol = table.findColumnByName(col.getName());
-            if (col.getColumnDesc().equals(foundCol) == false) {
-                logger.error("Realization '" + realization.getCanonicalName() + "' reports column '" + col.getCanonicalName() + "', but it is not equal to '" + foundCol + "' according to MetadataManager");
-                return false;
+
+            if (!col.getColumnDesc().isComputedColumnn()) {
+                ColumnDesc foundCol = table.findColumnByName(col.getName());
+                if (col.getColumnDesc().equals(foundCol) == false) {
+                    logger.error("Realization '" + realization.getCanonicalName() + "' reports column '" + col.getCanonicalName() + "', but it is not equal to '" + foundCol + "' according to MetadataManager");
+                    return false;
+                }
+            } else {
+                //computed column may not exit here
             }
 
             // auto-define table required by realization for some legacy test case

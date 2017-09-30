@@ -20,12 +20,13 @@ package org.apache.kylin.metadata.model;
 
 import java.io.Serializable;
 
-import org.apache.commons.lang.StringUtils;
 import org.apache.kylin.metadata.datatype.DataType;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonAutoDetect.Visibility;
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Preconditions;
 
 /**
  * Column Metadata from Source. All name should be uppercase.
@@ -37,29 +38,67 @@ public class ColumnDesc implements Serializable {
 
     @JsonProperty("id")
     private String id;
+
     @JsonProperty("name")
     private String name;
+
     @JsonProperty("datatype")
     private String datatype;
 
+    @JsonProperty("comment")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String comment;
+
+    @JsonProperty("data_gen")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String dataGen;
+
+    @JsonProperty("index")
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String index;
+
     // parsed from data type
     private DataType type;
+    private DataType upgradedType;
 
     private TableDesc table;
     private int zeroBasedIndex = -1;
     private boolean isNullable = true;
 
+    private TblColRef ref;
+    private String computedColumnExpr = null;//if null, it's not a computed column
+
     public ColumnDesc() { // default constructor for Jackson
     }
 
-    public static ColumnDesc mockup(TableDesc table, int oneBasedColumnIndex, String name, String datatype) {
-        ColumnDesc desc = new ColumnDesc();
-        String id = "" + oneBasedColumnIndex;
-        desc.setId(id);
-        desc.setName(name);
-        desc.setDatatype(datatype);
-        desc.init(table);
-        return desc;
+    public ColumnDesc(ColumnDesc other) {
+        this.id = other.id;
+        this.name = other.name;
+        this.datatype = other.datatype;
+        this.dataGen = other.datatype;
+        this.comment = other.comment;
+        this.dataGen = other.dataGen;
+        this.index = other.index;
+    }
+
+    public ColumnDesc(String id, String name, String datatype, String comment, String dataGen, String index,
+            String computedColumnExpr) {
+        this.id = id;
+        this.name = name;
+        this.datatype = datatype;
+        this.comment = comment;
+        this.dataGen = dataGen;
+        this.index = index;
+        this.computedColumnExpr = computedColumnExpr;
+    }
+
+    /** Use TableRef.getColumn() instead */
+    @Deprecated
+    public TblColRef getRef() {
+        if (ref == null) {
+            ref = new TblColRef(this);
+        }
+        return ref;
     }
 
     public int getZeroBasedIndex() {
@@ -76,12 +115,26 @@ public class ColumnDesc implements Serializable {
         type = DataType.getType(datatype);
     }
 
+    public void setUpgradedType(String datatype) {
+        this.upgradedType = DataType.getType(datatype);
+    }
+
+    public DataType getUpgradedType() {
+        if (this.upgradedType == null) {
+            return this.type;
+        } else {
+            return this.upgradedType;
+        }
+    }
+
     public String getId() {
         return id;
     }
 
     public void setId(String id) {
         this.id = id;
+        if (id != null)
+            zeroBasedIndex = Integer.parseInt(id) - 1;
     }
 
     public String getName() {
@@ -98,6 +151,14 @@ public class ColumnDesc implements Serializable {
 
     public void setTable(TableDesc table) {
         this.table = table;
+    }
+
+    public String getComment() {
+        return comment;
+    }
+
+    public void setComment(String comment) {
+        this.comment = comment;
     }
 
     public DataType getType() {
@@ -124,6 +185,24 @@ public class ColumnDesc implements Serializable {
         this.isNullable = nullable;
     }
 
+    public String getDataGen() {
+        return dataGen;
+    }
+
+    public String getIndex() {
+        return index;
+    }
+
+    public String getComputedColumnExpr() {
+        Preconditions.checkState(computedColumnExpr != null);
+
+        return computedColumnExpr;
+    }
+
+    public boolean isComputedColumnn() {
+        return computedColumnExpr != null;
+    }
+
     public void init(TableDesc table) {
         this.table = table;
 
@@ -141,11 +220,17 @@ public class ColumnDesc implements Serializable {
         }
     }
 
-    public boolean isSameAs(String tableName, String columnName) {
-        return StringUtils.equalsIgnoreCase(table.getIdentity(), tableName) && //
-                StringUtils.equalsIgnoreCase(name, columnName);
+    // for test mainly
+    public static ColumnDesc mockup(TableDesc table, int oneBasedColumnIndex, String name, String datatype) {
+        ColumnDesc desc = new ColumnDesc();
+        String id = "" + oneBasedColumnIndex;
+        desc.setId(id);
+        desc.setName(name);
+        desc.setDatatype(datatype);
+        desc.init(table);
+        return desc;
     }
-    
+
     @Override
     public int hashCode() {
         final int prime = 31;
@@ -164,21 +249,25 @@ public class ColumnDesc implements Serializable {
         if (getClass() != obj.getClass())
             return false;
         ColumnDesc other = (ColumnDesc) obj;
+
         if (name == null) {
             if (other.name != null)
                 return false;
         } else if (!name.equals(other.name))
             return false;
+
         if (table == null) {
             if (other.table != null)
                 return false;
-        } else if (!table.equals(other.table))
+        } else if (!table.getIdentity().equals(other.table.getIdentity()))
             return false;
+
         return true;
     }
 
     @Override
     public String toString() {
-        return "ColumnDesc [name=" + name + ",table=" + table.getIdentity() + "]";
+        return "ColumnDesc{" + "id='" + id + '\'' + ", name='" + name + '\'' + ", datatype='" + datatype + '\''
+                + ", comment='" + comment + '\'' + '}';
     }
 }

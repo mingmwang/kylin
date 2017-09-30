@@ -27,17 +27,26 @@ import java.util.List;
 
 import org.apache.kylin.metadata.tuple.IEvaluatableTuple;
 
-public class LogicalTupleFilter extends TupleFilter {
+import com.google.common.collect.Lists;
+
+public class LogicalTupleFilter extends TupleFilter implements IOptimizeableTupleFilter {
 
     public LogicalTupleFilter(FilterOperatorEnum op) {
         super(new ArrayList<TupleFilter>(2), op);
+
         boolean opGood = (op == FilterOperatorEnum.AND || op == FilterOperatorEnum.OR || op == FilterOperatorEnum.NOT);
         if (opGood == false)
             throw new IllegalArgumentException("Unsupported operator " + op);
     }
 
+    //private
     private LogicalTupleFilter(List<TupleFilter> filters, FilterOperatorEnum op) {
         super(filters, op);
+    }
+
+    private void reinitWithChildren(List<TupleFilter> newTupleFilter) {
+        this.children.clear();
+        this.addChildren(newTupleFilter);
     }
 
     @Override
@@ -47,25 +56,11 @@ public class LogicalTupleFilter extends TupleFilter {
         return cloneTuple;
     }
 
-    //    private TupleFilter reverseNestedNots(TupleFilter filter, int depth) {
-    //        if ((filter instanceof LogicalTupleFilter) && (filter.operator == FilterOperatorEnum.NOT)) {
-    //            assert (filter.children.size() == 1);
-    //            return reverseNestedNots(filter.children.get(0), depth + 1);
-    //        }
-    //
-    //        if (depth % 2 == 1) {
-    //            return filter;
-    //        } else {
-    //            return filter.reverse();
-    //        }
-    //    }
-
     @Override
     public TupleFilter reverse() {
         switch (operator) {
         case NOT:
-            throw new IllegalStateException("not( not in ()) is invalid syntax");
-            //return reverseNestedNots(this, 0);
+            throw new IllegalStateException("NOT will be replaced in org.apache.kylin.query.relnode.OLAPFilterRel.TupleFilterVisitor");
         case AND:
         case OR:
             LogicalTupleFilter reverse = new LogicalTupleFilter(REVERSE_OP_MAP.get(operator));
@@ -157,6 +152,22 @@ public class LogicalTupleFilter extends TupleFilter {
     @Override
     public void deserialize(IFilterCodeSystem<?> cs, ByteBuffer buffer) {
 
+    }
+
+    @Override
+    public TupleFilter acceptOptimizeTransformer(FilterOptimizeTransformer transformer) {
+        List<TupleFilter> newChildren = Lists.newArrayList();
+        for (TupleFilter child : this.getChildren()) {
+            if (child instanceof IOptimizeableTupleFilter) {
+                newChildren.add(((IOptimizeableTupleFilter) child).acceptOptimizeTransformer(transformer));
+            } else {
+                newChildren.add(child);
+            }
+        }
+
+        this.reinitWithChildren(newChildren);
+
+        return transformer.visit(this);
     }
 
 }

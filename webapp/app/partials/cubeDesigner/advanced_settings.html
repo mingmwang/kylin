@@ -16,14 +16,18 @@
 * limitations under the License.
 -->
 
-<div ng-controller="CubeAdvanceSettingCtrl">
-
+  <div ng-controller="CubeAdvanceSettingCtrl">
     <ng-form name="forms.cube_setting_form">
       <div>
-
-
         <div class="form-group">
-          <h4 style="margin-left:42px">Aggregation Groups</h4>
+          <h3 style="margin-left:42px;">Aggregation Groups </h3>
+          <div style="margin-left:22px;">
+            <div class="box-body">
+              <div class="col-xs-12">
+                Visit <a href="http://kylin.apache.org/blog/2016/02/18/new-aggregation-group" target="_blank">aggregation group</a> for more about aggregation group.
+              </div>
+            </div>
+          </div>
           <table style="margin-left:42px; width:92%"
                  ng-if="cubeMetaFrame.aggregation_groups.length > 0"
                  class="table table-hover list">
@@ -41,7 +45,7 @@
               <td class="col-xs-11">
                 <table class="table">
                   <tr class="row">
-                    <td class="col-xs-3">
+                    <td class="col-xs-3" style="min-width:130px;">
                       Includes
                     </td>
                     <td class="col-xs-8">
@@ -49,7 +53,7 @@
 
                       <ui-select
                         autofocus="true"
-                        close-on-select="false"
+                        close-on-select="false"    ng-disabled="instance.status=='READY'"
                         on-select="refreshAggregationGroup(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group)"
                         on-remove="refreshAggregationGroup(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group)"
                         ng-if="state.mode=='edit'" style="width: 100%" multiple ng-model="aggregation_group.includes">
@@ -59,7 +63,6 @@
                           {{rowkey_column.column}}
                         </ui-select-choices>
                       </ui-select>
-
                       <p ng-if="state.mode=='view'">
                         {{aggregation_group.includes}}</p>
                     </td>
@@ -73,7 +76,7 @@
                     <td class="col-xs-8">
                       <ui-select
                         close-on-select="false"
-                        autofocus="true"
+                        autofocus="true"       ng-disabled="instance.status=='READY'"
                         on-select="refreshAggregationGroup(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group)"
                         on-remove="refreshAggregationGroup(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group)"
                         ng-if="state.mode=='edit'" style="width: 100%" multiple ng-model="aggregation_group.select_rule.mandatory_dims">
@@ -90,19 +93,17 @@
                     <td class="col-xs-1">
                     </td>
                   </tr>
-
-
                   <tr class="row">
                     <td class="col-xs-3">
                       Hierarchy Dimensions
                     </td>
                     <td class="col-xs-9">
                       <table class="table">
-                        <tr class="row" ng-repeat="hierarchyDims in aggregation_group.select_rule.hierarchy_dims track by $index">
+                        <tr class="row" ng-repeat="hierarchyDims in aggregation_group.select_rule.hierarchy_dims">
                           <td class="col-xs-10">
                             <ui-select
                               close-on-select="false"
-                              autofocus="true"
+                              autofocus="true"      ng-disabled="instance.status=='READY'"
                               on-select="refreshAggregationHierarchy(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group,$index,hierarchyDims)"
                               on-remove="refreshAggregationHierarchy(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group,$index,hierarchyDims)"
                               ng-if="state.mode=='edit'" style="width: 100%" multiple ng-model="hierarchyDims">
@@ -114,41 +115,36 @@
                             </ui-select>
                             <p ng-if="state.mode=='view'">
                               {{hierarchyDims}}</p>
-
                           </td>
                           <td class="col-xs-2">
-                            <button class="btn btn-sm btn-info"
+                            <button class="btn btn-sm btn-info"  ng-disabled="instance.status=='READY'"
                                     ng-click="removeHierarchy(aggregation_group,hierarchyDims)"
                                     ng-show="state.mode=='edit'"><i class="fa fa-minus"></i>
                             </button>
                           </td>
                         </tr>
-
                         <tr class="row">
                           <td class="col-xs-12">
-                            <button class="btn btn-sm btn-info"
+                            <button class="btn btn-sm btn-info"     ng-disabled="instance.status=='READY'"
                                     ng-click="addNewHierarchy(aggregation_group)" ng-show="state.mode=='edit'">New Hierarchy<i class="fa fa-plus"></i>
                             </button>
                           </td>
                         </tr>
                       </table>
-
                     </td>
                   </tr>
-
-
                   <tr class="row">
                     <td class="col-xs-3">
                       Joint Dimensions
                     </td>
                     <td class="col-xs-9">
                       <table class="table">
-                        <tr class="row" ng-repeat="jointDims in aggregation_group.select_rule.joint_dims track by $index">
+                        <tr class="row" ng-repeat="jointDims in aggregation_group.select_rule.joint_dims">
                           <td class="col-xs-10">
                             <!-- Dimensions -->
                             <ui-select
                               close-on-select="false"
-                              autofocus="true"
+                              autofocus="true"    ng-disabled="instance.status=='READY'"
                               on-select="refreshAggregationJoint(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group,$index,jointDims)"
                               on-remove="refreshAggregationJoint(cubeMetaFrame.aggregation_groups, rowIndex, aggregation_group,$index,jointDims)"
                               ng-if="state.mode=='edit'" style="width: 100%" multiple ng-model="jointDims">
@@ -162,138 +158,407 @@
                               {{jointDims}}</p>
                           </td>
                           <td class="col-xs-2">
-                            <button class="btn btn-sm btn-info"
+                            <button class="btn btn-sm btn-info"   ng-disabled="instance.status=='READY'"
                                     ng-click="removeJointDims(aggregation_group,jointDims)"
                                     ng-show="state.mode=='edit'"><i class="fa fa-minus"></i>
                             </button>
                           </td>
                         </tr>
-
                         <tr class="row">
                           <td class="col-xs-12">
-                            <button class="btn btn-sm btn-info"
+                            <button class="btn btn-sm btn-info"      ng-disabled="instance.status=='READY'"
                                     ng-click="addNewJoint(aggregation_group)" ng-show="state.mode=='edit'">New Joint<i class="fa fa-plus"></i>
                             </button>
                           </td>
                         </tr>
                       </table>
-
                     </td>
                   </tr>
                 </table>
-
               </td>
               <td ng-if="state.mode=='edit'" class="col-xs-1">
-                <button class="btn btn-xs btn-info"
+                <button class="btn btn-xs btn-info"   ng-disabled="instance.status=='READY'"
                         ng-click="removeElement(cubeMetaFrame.aggregation_groups, aggregation_group)"><i
                   class="fa fa-minus"></i>
                 </button>
               </td>
             </tr>
           </table>
-
-          <button class="btn btn-sm btn-info" style="margin-left:42px" ng-click="addNewAggregationGroup()"
+          <button class="btn btn-sm btn-info" style="margin-left:42px" ng-click="addNewAggregationGroup()"  ng-disabled="instance.status=='READY'"
                   ng-show="state.mode=='edit'">New Aggregation Group<i class="fa fa-plus"></i>
           </button>
-
-
         </div>
+        <div class="form-group large-popover" >
+          <h3 style="margin-left:42px">Rowkeys  <i kylinpopover placement="right" title="Rowkey" template="rowkeyTip.html" class="fa fa-info-circle"></i></h3>
+
+          <div style="margin-left:42px">
+              <div class="box-body">
+                <table style="margin-left:42px; width:92%;position:relative"
+                       ng-if="cubeMetaFrame.rowkey.rowkey_columns.length > 0"
+                       class="table table-hover table-bordered list">
+                  <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th class="col-xs-5">Column</th>
+                    <th>Encoding</th>
+                    <th>Length</th>
+                    <th>Shard By</th>
+                  </tr>
+                  </thead>
+
+                  <tbody ng-if="state.mode!=='edit'" ng-model="convertedRowkeys">
+                <!--<tbody ng-if="state.mode!='edit'" ng-model="convertedRowkeys">-->
+
+                <tr ng-repeat="rowkey_column in convertedRowkeys track by $index">
+
+                  <td>
+                    <!-- ID -->
+                    <span class="ng-binding">{{($index + 1)}}</span>
+                  </td>
+                  <td>
+                    <!--Column Name -->
+                    <span>{{rowkey_column.column}}</span>
+                  </td>
+
+                  <td>
+                    <span>{{rowkey_column.encoding}}</span>
+
+                  </td>
+                  <td>
+                    <span>{{rowkey_column.valueLength}}</span>
+                  </td>
+
+                  <td>
+                   <span>{{rowkey_column.isShardBy}}</span>
+                  </td>
+                </tr>
+                </tbody>
 
 
-        <div class="form-group">
-          <h4 style="margin-left:42px">Rowkeys</h4>
-          <table style="margin-left:42px; width:92%"
-                 ng-if="cubeMetaFrame.rowkey.rowkey_columns.length > 0"
-                 class="table table-hover table-bordered list"
-          >
-            <thead>
-            <tr>
-              <th>ID</th>
-              <th style="width:200px;">Column</th>
-              <th>Encoding</th>
-              <th>Length</th>
-              <th>Shard By</th>
-              <th ng-if="state.mode=='edit'"></th>
-            </tr>
-            </thead>
+                  <tbody ng-show="state.mode=='edit'" ui-sortable="sortableOptions" ng-model="convertedRowkeys">
+                  <!--<tbody ng-if="state.mode!='edit'" ng-model="convertedRowkeys">-->
 
-            <tbody ui-sortable="{update:resortRowkey()}" ng-model="convertedRowkeys">
+                  <tr ng-repeat="rowkey_column in convertedRowkeys track by $index"
+                      class="sort-item">
 
-            <tr ng-repeat="rowkey_column in convertedRowkeys track by $index"
-                ng-class="state.mode=='edit'?'sort-item':''">
+                    <td>
+                      <!-- ID -->
+                      <span class="ng-binding badge">{{($index + 1)}}</span>
+                    </td>
+                    <td>
+                      <!--Column Name -->
+                      <input type="text" class="form-control" placeholder="Column Name.."
+                             ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column)"  ng-disabled="true"
+                             tooltip="rowkey column name.." tooltip-trigger="focus"
+                             ng-model="rowkey_column.column" class="form-control">
+                    </td>
 
-              <td>
-                <!-- ID -->
-                <span class="ng-binding" ng-class="state.mode=='edit'?'badge':''">{{($index + 1)}}</span>
-              </td>
-              <td>
-                <!--Column Name -->
-                <input type="text" class="form-control" placeholder="Column Name.." ng-if="state.mode=='edit'"
-                       ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column)"
-                       tooltip="rowkey column name.." tooltip-trigger="focus"
-                       ng-model="rowkey_column.column" class="form-control">
+                    <td>
+                      <select  style="width:180px;"     ng-disabled="instance.status=='READY'"
+                              chosen ng-model="rowkey_column.encoding"
+                              ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column);"
+                              ng-options="dt.value as dt.name for dt in getEncodings(rowkey_column.column)">
+                        <option value=""></option>
+                      </select>
+                    </td>
+                    <td>
+                      <!--Column Length -->
+                      <input type="text" class="form-control" placeholder="Column Length.."
+                             tooltip="rowkey column length.." tooltip-trigger="focus"
+                             ng-disabled="rowkey_column.encoding.indexOf('dict')>=0||rowkey_column.encoding.indexOf('date')>=0||rowkey_column.encoding.indexOf('time')>=0||instance.status=='READY'"
+                             ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column);"
+                             ng-model="rowkey_column.valueLength" class="form-control">
 
-                <span ng-if="state.mode=='view'">{{rowkey_column.column}}</span>
-              </td>
-              <td>
-                <select ng-if="state.mode=='edit'" style="width:180px;"
-                        chosen ng-model="rowkey_column.encoding"
-                        ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column);"
-                        ng-options="dt as dt for dt in store.supportedEncoding">
-                  <option value=""></option>
-                </select>
-                <span ng-if="state.mode=='view'">{{rowkey_column.encoding}}</span>
+                      <small class="help-block red" ng-show="state.mode=='edit' && rowkey_column.encoding.indexOf('integer')>=0 && (rowkey_column.valueLength>8 || rowkey_column.valueLength<1)">integer encoding column length should between 1 and 8</small>
+                    </td>
 
-              </td>
-              <td>
-                <!--Column Length -->
-                <input type="text" class="form-control" placeholder="Column Length.." ng-if="state.mode=='edit'"
-                       tooltip="rowkey column length.." tooltip-trigger="focus"
-                       ng-disabled="rowkey_column.encoding=='dict'"
-                       ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column);"
-                       ng-model="rowkey_column.valueLength" class="form-control">
-
-                <small class="help-block red" ng-show="state.mode=='edit' && rowkey_column.encoding=='int' && (rowkey_column.valueLength>8 || rowkey_column.valueLength<1)">int encoding column length should between 1 and 8</small>
-                <span ng-if="state.mode=='view'">{{rowkey_column.valueLength}}</span>
-              </td>
-
-              <td>
-                <select ng-if="state.mode=='edit'" style="width:180px;"
-                        chosen ng-model="rowkey_column.isShardBy"
-                        tooltip="false by default"
-                        data-placeholder="false by default"
-                        ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column,true)"
-                        ng-options="dt as dt for dt in cubeConfig.rowKeyShardOptions">
-                  <option value=""></option>
-                </select>
-                <small class="help-block red" ng-show="state.mode=='edit' && rule.shardColumnAvailable==false && rowkey_column.isShardBy == true">at most one 'shard by' column is allowed.</small>
-                <span ng-if="state.mode=='view'">{{rowkey_column.isShardBy}}</span>
-              </td>
-
-              <td ng-if="state.mode=='edit'">
-                <button class="btn btn-xs btn-info"
-                        ng-click="removeRowkey(convertedRowkeys, $index,rowkey_column)"><i
-                  class="fa fa-minus"></i>
-                </button>
-              </td>
-            </tr>
-            </tbody>
-          </table>
-
-          <button class="btn btn-sm btn-info" style="margin-left:42px"
-                  ng-click="addNewRowkeyColumn()" ng-show="state.mode=='edit'">New Rowkey Column<i class="fa fa-plus"></i>
-          </button>
+                    <td>
+                      <select  style="width:180px;"
+                              chosen ng-model="rowkey_column.isShardBy"
+                              tooltip="false by default"     ng-disabled="instance.status=='READY'"
+                              data-placeholder="false by default"
+                              ng-change="refreshRowKey(convertedRowkeys,$index,rowkey_column,true)"
+                              ng-options="dt as dt for dt in cubeConfig.rowKeyShardOptions">
+                        <option value=""></option>
+                      </select>
+                      <small class="help-block red" ng-show="state.mode=='edit' && rule.shardColumnAvailable==false && rowkey_column.isShardBy == true">at most one 'shard by' column is allowed.</small>
+                    </td>
+                  </tr>
+                  </tbody>
+                </table>
+              </div>
+          </div>
         </div>
-
-      </div>
-
-      <div class="box box-solid" style="margin-left:22px;">
-        <div class="box-body">
-            <div class="col-xs-12">
-                Visit <a href="http://kylin.apache.org/blog/2016/02/18/new-aggregation-group" target="_blank">aggregation group</a> for more about aggregation group.
+        <!--Cube Engine-->
+        <div class="form-group large-popover" style="margin-bottom:30px;">
+          <h3 style="margin-left:42px;margin-bottom:30px;">Cube Engine  <i kylinpopover placement="right" title="Cube Engine" template="CubeEngineTip.html" class="fa fa-info-circle"></i></h3>
+          <div class="row" style="margin-left:42px">
+            <label class="control-label col-xs-12 col-sm-3 no-padding-right font-color-default"><b>Engine Type :</b></label>
+            <div class="col-xs-12 col-sm-6">
+              <select style="width: 100%" chosen
+                      ng-model="cubeMetaFrame.engine_type"
+                      ng-if="state.mode=='edit'"  ng-disabled="instance.segments.length>0"
+                      ng-options="et.value as et.name for et in cubeConfig.engineType">
+                <option value="">--Select Engine Type--</option>
+              </select>
+              <span ng-if="state.mode=='view'&&cubeMetaFrame.engine_type==2">MapReduce</span>
+              <span ng-if="state.mode=='view'&&cubeMetaFrame.engine_type==4">Spark(Beta)</span>
             </div>
+          </div>
         </div>
-      </div>
-    </ng-form>
+        <div class="form-group large-popover">
+          <h3 style="margin-left:42px">Advanced Dictionaries  <i kylinpopover placement="right" title="Advanced Dictionaries" template="AdvancedDictionariesTip.html" class="fa fa-info-circle"></i></h3>
+          <div style="margin-left:42px">
+            <div class="box-body">
+              <br/>
+              <table class="table table-striped table-hover">
+                <thead>
+                <tr>
+                  <th>Column</th>
+                  <th>Builder Class</th>
+                  <th>Reuse</th>
+                  <th ng-if="state.mode=='edit'">Actions</th>
+                </tr>
+                </thead>
+                <tbody>
+                  <tr ng-repeat="dictionaries in cubeMetaFrame.dictionaries | filter: state.measureFilter track by $index">
+                    <td>
+                      <!--Column -->
+                      <span>{{dictionaries.column}}</span>
+                    </td>
+                    <td>
+                      <!--Builder-->
+                      <span>{{dictionaries.builder}}</span>
+                    </td>
+                    <td>
+                      <!--Reuse-->
+                      <span>{{dictionaries.reuse}}</span>
+                    </td>
+                    <td ng-if="state.mode=='edit'">
+                      <!--Edit Button -->
+                      <button class="btn btn-xs btn-info" ng-click="addNewDictionaries(dictionaries, $index)" ng-disabled="instance.status=='READY'">
+                        <i class="fa fa-pencil"></i>
+                      </button>
+                      <!--Remove Button -->
+                      <button class="btn btn-xs  btn-danger" ng-click="removeElement(cubeMetaFrame.dictionaries, dictionaries)" ng-disabled="instance.status=='READY'">
+                        <i class="fa fa-trash-o"></i>
+                      </button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+        <!--Add Dictionaries Button-->
+        <div class="form-group" style="margin-left:42px;">
+          <button class="btn btn-sm btn-info" ng-click="addNewDictionaries()" ng-show="state.mode=='edit' && !addNew" ng-disabled="instance.status=='READY'">
+            <i class="fa fa-plus"></i> Dictionaries
+          </button>
+       </div>
+       <!--Edit Dictionsry-->
+       <ng-form name="edit_mes_form" style="margin-left:42px;">
+         <div class="box box-solid"  ng-if="addNew" style="margin-left:42px;">
+           <div class="box-header">
+             <h4 class="box-title text-info">Edit Dictionaries</h4>
+           </div>
+           <div class="box-body">
+             <div class="row">
+               <div class="col-xs-8">
+                 <!--Column-->
+                 <div class="form-group middle-popover">
+                   <div class="row">
+                     <label class="col-xs-12 col-sm-3 control-label no-padding-right font-color-default"><b>Column</b></label>
+                     <div class="col-xs-12 col-sm-6">
+                       <select class="form-control" chosen
+                               ng-model="newDictionaries.column"
+                               ng-change="measureReturnTypeUpdate();"
+                               ng-options="column as column for column in getFactColumns()" required>
+                         <option value="">-- Select a Column --</option>
+                       </select>
+                     </div>
+                   </div>
+                 </div>
+                 <div class="form-group">
+                   <div class="row" style="margin-left:5px;">
+                     <label class="radio-inline ng-binding ng-scope">
+                       <input type="radio" name="reuse" ng-value=false ng-model="isReuse"  ng-change="change()"/><b>Builder Class</b>
+                     </label>
+                     <label class="radio-inline ng-binding ng-scope">
+                       <input type="radio" name="reuse"  ng-value=true ng-model="isReuse" ng-change="change()"/><b>Reuse</b>
+                     </label>
+                   </div>
+                 </div>
+                 <!--Builder-->
+                 <div class="form-group" ng-if="!isReuse" >
+                   <div class="row">
+                     <label class="col-xs-12 col-sm-3 control-label no-padding-right font-color-default"><b>Builder Class</b></label>
+                     <div class="col-xs-12 col-sm-6">
+                       <select class="form-control" chosen
+                               ng-model="newDictionaries.builder"
+                               ng-options="item.value as item.name for item in cubeConfig.buildDictionaries"
+                               required>
+                         <option value="">-- Select a builder class--</option>
+                       </select>
+                     </div>
+                   </div>
+                 </div>
+                 <!--Reuse-->
+                 <div class="form-group middle-popover" ng-if="isReuse" >
+                   <div class="row">
+                     <label class="col-xs-12 col-sm-3 control-label no-padding-right font-color-default"><b>Reuse</b></label>
+                     <div class="col-xs-12 col-sm-6">
+                       <select class="form-control" chosen
+                               ng-model="newDictionaries.reuse"
+                               ng-change="measureReturnTypeUpdate();"
+                               ng-options="column as column for column in getFactColumns()" required>
+                         <option value="">-- Select a Column --</option>
+                       </select>
+                     </div>
+                   </div>
+                 </div>
+               </div>
+             </div>
+           </div>
+           <div class="box-footer">
+             <button class="btn btn-sm btn-info" ng-disabled="edit_mes_form.$invalid"
+                     ng-click="saveNewDictionaries()" ng-show="state.mode=='edit'">OK</button>
+             <button class="btn btn-link" ng-click="clearNewDictionaries()">Cancel</button>
+           </div>
+         </div>
+         <!--Edit ColumnFamily-->
+         <div class="form-group large-popover" >
+           <h3 style="margin-left:42px">Advanced ColumnFamily  <i kylinpopover placement="right" title="Advanced ColumnFamily" template="AdvancedColumnFamilyTip.html" class="fa fa-info-circle"></i></h3>
+           <div style="margin-left:42px">
+             <div class="box-body">
+               <!-- VIEW MODE -->
+               <div class="row"  ng-if="state.mode=='view'&& cubeMetaFrame.hbase_mapping.column_family.length > 0">
+                 <table class="table table-striped table-hover">
+                   <thead>
+                   <tr>
+                     <th class="col-xs-1">CF</th>
+                     <th class="col-xs-11">Measures</th>
+                   </tr>
+                   </thead>
+                   <tbody class="cube-dimension">
+                   <tr ng-repeat="colFamily in cubeMetaFrame.hbase_mapping.column_family | filter:dimState.filter track by $index">
+                     <!--ID -->
+                     <td class="col-xs-1">
+                       <b>{{colFamily.name}}</b>
+                     </td>
+                     <!--Name -->
+                     <td class="col-xs-11">
+                       <span>{{colFamily.columns[0].measure_refs}}</span>
+                     </td>
+                   </tr>
+                   </tbody>
+                 </table>
+               </div>
 
-</div>
+               <!-- EDIT MODE -->
+               <div  ng-if="state.mode=='edit'" class="form-group " style="width: 100%">
+                 <table ng-if="cubeMetaFrame.hbase_mapping.column_family.length > 0"
+                        class="table table-hover">
+
+                   <tr class="row">
+                     <th class="col-xs-1">CF</th>
+                     <th class="col-xs-10">Measures</th>
+                     <th class="col-xs-1">Actions</th>
+                   </tr>
+
+                   <tr ng-repeat="colFamily in cubeMetaFrame.hbase_mapping.column_family" ng-init="rowIndex = $index" class="row">
+                     <td class="col-xs-1">
+                       <b>{{colFamily.name}}</b>
+                     </td>
+
+                     <td class="col-xs-10">
+                       <ui-select
+                         style="width: 100%"
+                         close-on-select="false"
+                         on-select="refreshColumnFamily(cubeMetaFrame.hbase_mapping.column_family, rowIndex, colFamily)"
+                         on-remove="refreshColumnFamily(cubeMetaFrame.hbase_mapping.column_family, rowIndex, colFamily)"
+                         ng-model="colFamily.columns[0].measure_refs"
+                         multiple>
+                         <ui-select-match placeholder="Select Measure...">{{$item}}</ui-select-match>
+                         <ui-select-choices repeat="measure in getAllMeasureNames() | filter:$select.search |assignedMeasureNames:getAssignedMeasureNames()">
+                           {{measure}}
+                         </ui-select-choices>
+                       </ui-select>
+                     </td>
+
+                     <td class="col-xs-1">
+                       <!--Remove Button -->
+                       <button ng-if="colFamily.columns[0].measure_refs.length == 0" class="btn btn-xs btn-info" ng-click="removeElement(cubeMetaFrame.hbase_mapping.column_family, colFamily)">
+                         <i class="fa fa-minus"></i>
+                       </button>
+                     </td>
+
+                   </tr>
+                 </table>
+               </div>
+
+               <div class="form-group" >
+                 <button class="btn btn-sm btn-info" ng-click="addColumnFamily()" ng-show="state.mode=='edit'">
+                   <i class="fa fa-plus"></i> ColumnFamily
+                 </button>
+               </div>
+
+             </div>
+           </div>
+         </div>
+       </ng-form>
+     </div>
+   </ng-form>
+ </div>
+
+<script type="text/ng-template" id="rowkeyTip.html">
+  <div>
+    <h4>Shard By this column?</h4>
+    <p>
+      If specified as "true", cube data will be sharded according to its value.
+    </p>
+
+    <h4>RowKey Encoding</h4>
+    <ol>
+      <li>
+        "dict" encoding will try to build a dictionaries for the dimension
+      </li>
+      <li>
+        "fixed_length" encoding will encode the dimension vlaues by fixed length bytes with padding
+      </li>
+      <li>
+        "int" encoding uses variable integer to encode integers
+      </li>
+    </ol>
+  </div>
+</script>
+<script type="text/ng-template" id="AdvancedDictionariesTip.html">
+  <div>
+    <h4>Special settings for dictionaries.</h4>
+    <ol>
+      <li>
+        "Global Dictionary" is the default dict for precise count distinct measure, which support rollup among all segments.
+      </li>
+      <li>
+        "Segment Dictionary" is the special dict for precise count distinct measure, which is based on one segment and could not
+        support rollup among segments.
+        Specifically, if your cube isn't partitioned or you can ensure all your SQLs will group by your partition_column,
+        you could use "Segment Dictionary" instead of "Global Dictionary".
+      </li>
+    </ol>
+  </div>
+</script>
+
+<script type="text/ng-template" id="AdvancedColumnFamilyTip.html">
+  <div>
+    <h4>If there are more than one ultrahigh cardinality precise count distinct measures,
+        you could assign these measures to more column family.</h4>
+  </div>
+</script>
+<script type="text/ng-template" id="CubeEngineTip.html" >
+  <div>
+    <h4>
+       Select cube engine for building cube.
+    </h4>
+  </div>
+</script>

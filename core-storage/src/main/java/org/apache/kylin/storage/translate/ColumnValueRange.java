@@ -23,8 +23,8 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
 
+import org.apache.kylin.common.util.Dictionary;
 import org.apache.kylin.cube.kv.RowKeyColumnOrder;
-import org.apache.kylin.dimension.Dictionary;
 import org.apache.kylin.metadata.filter.TupleFilter.FilterOperatorEnum;
 import org.apache.kylin.metadata.model.TblColRef;
 
@@ -168,7 +168,7 @@ public class ColumnValueRange {
 
     // remove invalid EQ/IN values and round start/end according to dictionary
     public void preEvaluateWithDict(Dictionary<String> dict) {
-        if (dict == null)
+        if (dict == null || dict.getSize() == 0)
             return;
 
         if (equalValues != null) {

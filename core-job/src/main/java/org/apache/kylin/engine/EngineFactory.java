@@ -18,38 +18,37 @@
 
 package org.apache.kylin.engine;
 
-import static org.apache.kylin.metadata.model.IEngineAware.ID_MR_V1;
-import static org.apache.kylin.metadata.model.IEngineAware.ID_MR_V2;
-
-import java.util.HashMap;
-import java.util.Map;
-
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.util.ImplementationSwitch;
 import org.apache.kylin.cube.CubeSegment;
+import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.job.execution.DefaultChainedExecutable;
 import org.apache.kylin.metadata.model.IEngineAware;
+import org.apache.kylin.metadata.model.IJoinedFlatTableDesc;
 
 public class EngineFactory {
 
-    private static ImplementationSwitch<IBatchCubingEngine> batchEngines;
-    private static ImplementationSwitch<IStreamingCubingEngine> streamingEngines;
-    static {
-        Map<Integer, String> impls = new HashMap<>();
-        impls.put(ID_MR_V1, KylinConfig.getInstanceFromEnv().getMRBatchEngineV1Class());
-        impls.put(ID_MR_V2, KylinConfig.getInstanceFromEnv().getMRBatchEngineV2Class());
-        batchEngines = new ImplementationSwitch<IBatchCubingEngine>(impls, IBatchCubingEngine.class);
-
-        impls.clear();
-        streamingEngines = new ImplementationSwitch<IStreamingCubingEngine>(impls, IStreamingCubingEngine.class); // TODO
-    }
+    // Use thread-local because KylinConfig can be thread-local and implementation might be different among multiple threads.
+    private static ThreadLocal<ImplementationSwitch<IBatchCubingEngine>> engines = new ThreadLocal<>();
 
     public static IBatchCubingEngine batchEngine(IEngineAware aware) {
-        return batchEngines.get(aware.getEngineType());
+        ImplementationSwitch<IBatchCubingEngine> current = engines.get();
+        if (current == null) {
+            current = new ImplementationSwitch<>(KylinConfig.getInstanceFromEnv().getJobEngines(),
+                    IBatchCubingEngine.class);
+            engines.set(current);
+        }
+        return current.get(aware.getEngineType());
     }
 
-    public static IStreamingCubingEngine streamingEngine(IEngineAware aware) {
-        return streamingEngines.get(aware.getEngineType());
+    /** Mark deprecated to indicate for test purpose only */
+    @Deprecated
+    public static IJoinedFlatTableDesc getJoinedFlatTableDesc(CubeDesc cubeDesc) {
+        return batchEngine(cubeDesc).getJoinedFlatTableDesc(cubeDesc);
+    }
+
+    public static IJoinedFlatTableDesc getJoinedFlatTableDesc(CubeSegment newSegment) {
+        return batchEngine(newSegment).getJoinedFlatTableDesc(newSegment);
     }
 
     /** Build a new cube segment, typically its time range appends to the end of current cube. */
@@ -60,10 +59,6 @@ public class EngineFactory {
     /** Merge multiple small segments into a big one. */
     public static DefaultChainedExecutable createBatchMergeJob(CubeSegment mergeSegment, String submitter) {
         return batchEngine(mergeSegment).createBatchMergeJob(mergeSegment, submitter);
-    }
-
-    public static Runnable createStreamingCubingBuilder(CubeSegment seg) {
-        return streamingEngine(seg).createStreamingCubingBuilder(seg);
     }
 
 }

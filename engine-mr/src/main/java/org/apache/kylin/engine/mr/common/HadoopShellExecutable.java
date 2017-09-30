@@ -28,12 +28,15 @@ import org.apache.kylin.job.exception.ExecuteException;
 import org.apache.kylin.job.execution.AbstractExecutable;
 import org.apache.kylin.job.execution.ExecutableContext;
 import org.apache.kylin.job.execution.ExecuteResult;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Preconditions;
 
 /**
  */
 public class HadoopShellExecutable extends AbstractExecutable {
+    private static final Logger logger = LoggerFactory.getLogger(HadoopShellExecutable.class);
 
     private static final String KEY_MR_JOB = "HADOOP_SHELL_JOB_CLASS";
     private static final String KEY_PARAMS = "HADOOP_SHELL_JOB_PARAMS";
@@ -52,8 +55,7 @@ public class HadoopShellExecutable extends AbstractExecutable {
             final Constructor<? extends AbstractHadoopJob> constructor = ClassUtil.forName(mapReduceJobClass, AbstractHadoopJob.class).getConstructor();
             final AbstractHadoopJob job = constructor.newInstance();
             String[] args = params.trim().split("\\s+");
-            logger.info("parameters of the HadoopShellExecutable:");
-            logger.info(params);
+            logger.info("parameters of the HadoopShellExecutable: {}", params);
             int result;
             StringBuilder log = new StringBuilder();
             try {

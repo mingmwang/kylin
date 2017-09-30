@@ -21,7 +21,7 @@ package org.apache.kylin.metadata.filter.function;
 import java.lang.reflect.InvocationTargetException;
 import java.util.Map;
 
-import org.apache.kylin.metadata.filter.BuildInFunctionTupleFilter;
+import org.apache.kylin.metadata.filter.BuiltInFunctionTupleFilter;
 import org.apache.kylin.metadata.filter.TupleFilter;
 import org.apache.kylin.metadata.filter.UDF.MassInTupleFilter;
 
@@ -53,8 +53,8 @@ public class Functions {
                 throw new RuntimeException("Failed to on constructing FunctionTupleFilter for " + name);
             }
         }
-        
-        return new BuildInFunctionTupleFilter(name);
+
+        return new BuiltInFunctionTupleFilter(name);
 
     }
 }

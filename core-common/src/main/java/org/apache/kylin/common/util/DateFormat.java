@@ -18,34 +18,39 @@
 package org.apache.kylin.common.util;
 
 import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.Map;
 import java.util.TimeZone;
 import java.util.concurrent.ConcurrentHashMap;
 
+import org.apache.commons.lang3.time.FastDateFormat;
+
 public class DateFormat {
 
+    public static final String COMPACT_DATE_PATTERN = "yyyyMMdd";
     public static final String DEFAULT_DATE_PATTERN = "yyyy-MM-dd";
     public static final String DEFAULT_TIME_PATTERN = "HH:mm:ss";
     public static final String DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS = "yyyy-MM-dd HH:mm:ss";
     public static final String DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS = "yyyy-MM-dd HH:mm:ss.SSS";
-    public static final String[] SUPPORTED_DATETIME_PATTERN = { DEFAULT_DATE_PATTERN, DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS, DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS, "yyyyMMdd" };
+    public static final String[] SUPPORTED_DATETIME_PATTERN = { //
+            DEFAULT_DATE_PATTERN, //
+            DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS, //
+            DEFAULT_DATETIME_PATTERN_WITH_MILLISECONDS, //
+            COMPACT_DATE_PATTERN };
 
-    static final private Map<String, ThreadLocal<SimpleDateFormat>> threadLocalMap = new ConcurrentHashMap<String, ThreadLocal<SimpleDateFormat>>();
+    static final private Map<String, FastDateFormat> formatMap = new ConcurrentHashMap<String, FastDateFormat>();
 
-    public static SimpleDateFormat getDateFormat(String datePattern) {
-        ThreadLocal<SimpleDateFormat> formatThreadLocal = threadLocalMap.get(datePattern);
-        if (formatThreadLocal == null) {
-            threadLocalMap.put(datePattern, formatThreadLocal = new ThreadLocal<SimpleDateFormat>());
+    public static FastDateFormat getDateFormat(String datePattern) {
+        FastDateFormat r = formatMap.get(datePattern);
+        if (r == null) {
+            r = FastDateFormat.getInstance(datePattern, TimeZone.getTimeZone("GMT")); // NOTE: this must be GMT to calculate epoch date correctly
+            formatMap.put(datePattern, r);
         }
-        SimpleDateFormat format = formatThreadLocal.get();
-        if (format == null) {
-            format = new SimpleDateFormat(datePattern);
-            format.setTimeZone(TimeZone.getTimeZone("GMT")); // NOTE: this must be GMT to calculate epoch date correctly
-            formatThreadLocal.set(format);
-        }
-        return format;
+        return r;
+    }
+    
+    public static String formatToCompactDateStr(long millis) {
+        return formatToDateStr(millis, COMPACT_DATE_PATTERN);
     }
 
     public static String formatToDateStr(long millis) {
@@ -87,15 +92,14 @@ public class DateFormat {
     }
 
     public static long stringToMillis(String str) {
-        return stringToMillis(str, DEFAULT_DATE_PATTERN);
-    }
-
-    public static long stringToMillis(String str, String partitionDateFormat) {
+        // try to be smart and guess the date format
         if (isAllDigits(str)) {
-            return Long.parseLong(str);
-        } else if (str.length() == 8 && partitionDateFormat.length() == 8) {
-            return stringToDate(str, partitionDateFormat).getTime();
-        } else if (str.length() == 10 && partitionDateFormat.length() == 10) {
+            if (str.length() == 8)
+                //TODO: might be prolematic if an actual ts happends to be 8 digits, e.g. 1970-01-01 10:00:01.123
+                return stringToDate(str, COMPACT_DATE_PATTERN).getTime();
+            else
+                return Long.parseLong(str);
+        } else if (str.length() == 10) {
             return stringToDate(str, DEFAULT_DATE_PATTERN).getTime();
         } else if (str.length() == 19) {
             return stringToDate(str, DEFAULT_DATETIME_PATTERN_WITHOUT_MILLISECONDS).getTime();
@@ -108,8 +112,13 @@ public class DateFormat {
 
     private static boolean isAllDigits(String str) {
         for (int i = 0, n = str.length(); i < n; i++) {
-            if (Character.isDigit(str.charAt(i)) == false)
-                return false;
+            if (!Character.isDigit(str.charAt(i))) {
+                if (i == 0 && str.charAt(0) == '-') {
+                    continue;
+                } else {
+                    return false;
+                }
+            }
         }
         return true;
     }
@@ -126,5 +135,9 @@ public class DateFormat {
             }
         }
         return false;
+    }
+
+    public static boolean isDatePattern(String ptn) {
+        return COMPACT_DATE_PATTERN.equals(ptn) || DEFAULT_DATE_PATTERN.equals(ptn);
     }
 }

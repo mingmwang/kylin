@@ -23,7 +23,6 @@ import java.util.Set;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kylin.metadata.model.FunctionDesc;
-import org.apache.kylin.metadata.project.ProjectManager;
 import org.apache.kylin.metadata.realization.CapabilityResult;
 import org.apache.kylin.metadata.realization.CapabilityResult.CapabilityInfluence;
 import org.apache.kylin.metadata.realization.CapabilityResult.DimensionAsMeasure;
@@ -42,13 +41,11 @@ public class QueryRouter {
 
     private static final Logger logger = LoggerFactory.getLogger(QueryRouter.class);
 
-    public static IRealization selectRealization(OLAPContext olapContext) throws NoRealizationFoundException {
+    public static IRealization selectRealization(OLAPContext olapContext, Set<IRealization> realizations)
+            throws NoRealizationFoundException {
 
-        ProjectManager prjMgr = ProjectManager.getInstance(olapContext.olapSchema.getConfig());
-        logger.info("The project manager's reference is " + prjMgr);
         String factTableName = olapContext.firstTableScan.getTableName();
         String projectName = olapContext.olapSchema.getProjectName();
-        Set<IRealization> realizations = prjMgr.getRealizationsByTable(projectName, factTableName);
         SQLDigest sqlDigest = olapContext.getSQLDigest();
 
         List<Candidate> candidates = Lists.newArrayListWithCapacity(realizations.size());
@@ -57,20 +54,31 @@ public class QueryRouter {
                 candidates.add(new Candidate(real, sqlDigest));
         }
 
-        logger.info("Find candidates by table " + factTableName + " and project=" + projectName + " : " + StringUtils.join(candidates, ","));
+        logger.info("Find candidates by table " + factTableName + " and project=" + projectName + " : "
+                + StringUtils.join(candidates, ","));
+
+        List<Candidate> originCandidates = Lists.newArrayList(candidates);
 
         // rule based realization selection, rules might reorder realizations or remove specific realization
         RoutingRule.applyRules(candidates);
 
+        collectIncapableReason(olapContext, originCandidates);
+
         if (candidates.size() == 0) {
-            throw new NoRealizationFoundException("Can't find any realization. Please confirm with providers. SQL digest: " + sqlDigest.toString());
+            return null;
         }
 
         Candidate chosen = candidates.get(0);
         adjustForDimensionAsMeasure(chosen, olapContext);
 
-        logger.info("The realizations remaining: " + RoutingRule.getPrintableText(candidates) + " And the final chosen one is the first one");
+        logger.info("The realizations remaining: " + RoutingRule.getPrintableText(candidates)
+                + " And the final chosen one is the first one");
 
+        for (CapabilityInfluence influence : chosen.getCapability().influences) {
+            if (influence.getInvolvedMeasure() != null) {
+                olapContext.involvedMeasure.add(influence.getInvolvedMeasure());
+            }
+        }
 
         return chosen.realization;
     }
@@ -87,4 +95,16 @@ public class QueryRouter {
         }
     }
 
+    private static void collectIncapableReason(OLAPContext olapContext, List<Candidate> candidates) {
+        for (Candidate candidate : candidates) {
+            if (!candidate.getCapability().capable) {
+                RealizationCheck.IncapableReason reason = RealizationCheck.IncapableReason
+                        .create(candidate.getCapability().incapableCause);
+                if (reason != null)
+                    olapContext.realizationCheck.addIncapableCube(candidate.getRealization(), reason);
+            } else {
+                olapContext.realizationCheck.addCapableCube(candidate.getRealization());
+            }
+        }
+    }
 }

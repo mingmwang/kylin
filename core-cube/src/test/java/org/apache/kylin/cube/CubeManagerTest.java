@@ -18,22 +18,28 @@
 
 package org.apache.kylin.cube;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import java.util.List;
+import java.util.Map;
 import java.util.NavigableSet;
 
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
-import org.apache.kylin.common.util.JsonUtil;
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
 import org.apache.kylin.metadata.model.SegmentStatusEnum;
 import org.apache.kylin.metadata.project.ProjectInstance;
 import org.apache.kylin.metadata.project.ProjectManager;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
+
+import com.google.common.collect.Maps;
 
 /**
  * @author yangli9
@@ -52,11 +58,10 @@ public class CubeManagerTest extends LocalFileMetadataTestCase {
 
     @Test
     public void testBasics() throws Exception {
-        
-        
+
         CubeInstance cube = CubeManager.getInstance(getTestConfig()).getCube("test_kylin_cube_without_slr_ready");
         CubeDesc desc = cube.getDescriptor();
-        System.out.println(JsonUtil.writeValueAsIndentString(desc));
+        //System.out.println(JsonUtil.writeValueAsIndentString(desc));
 
         String signature = desc.calculateSignature();
         desc.getModel().getPartitionDesc().setPartitionDateColumn("test_column");
@@ -94,7 +99,7 @@ public class CubeManagerTest extends LocalFileMetadataTestCase {
         CubeManager mgr = CubeManager.getInstance(getTestConfig());
         CubeInstance cube = mgr.getCube("test_kylin_cube_with_slr_empty");
 
-        cube.getDescriptor().setAutoMergeTimeRanges(new long[]{2000, 6000});
+        cube.getDescriptor().setAutoMergeTimeRanges(new long[] { 2000, 6000 });
         mgr.updateCube(new CubeUpdate(cube));
 
         assertTrue(cube.needAutoMerge());
@@ -103,10 +108,10 @@ public class CubeManagerTest extends LocalFileMetadataTestCase {
         assertEquals(0, cube.getSegments().size());
 
         // append first
-        CubeSegment seg1 = mgr.appendSegments(cube, 1000);
+        CubeSegment seg1 = mgr.appendSegment(cube, new TSRange(0L, 1000L), null, null, null);
         seg1.setStatus(SegmentStatusEnum.READY);
 
-        CubeSegment seg2 = mgr.appendSegments(cube, 2000);
+        CubeSegment seg2 = mgr.appendSegment(cube, new TSRange(1000L, 2000L), null, null, null);
         seg2.setStatus(SegmentStatusEnum.READY);
 
         CubeUpdate cubeBuilder = new CubeUpdate(cube);
@@ -115,9 +120,126 @@ public class CubeManagerTest extends LocalFileMetadataTestCase {
 
         assertEquals(2, cube.getSegments().size());
 
-        CubeSegment mergedSeg = mgr.autoMergeCubeSegments(cube);
+        SegmentRange mergedSeg = cube.autoMergeCubeSegments();
 
         assertTrue(mergedSeg != null);
+
+    }
+
+
+    @Test
+    public void testConcurrentBuildAndMerge() throws Exception {
+        CubeManager mgr = CubeManager.getInstance(getTestConfig());
+        CubeInstance cube = mgr.getCube("test_kylin_cube_with_slr_empty");
+        System.setProperty("kylin.cube.max-building-segments", "10");
+        // no segment at first
+        assertEquals(0, cube.getSegments().size());
+
+        Map m1 =  Maps.newHashMap();
+        m1.put(1, 1000L);
+        Map m2 =  Maps.newHashMap();
+        m2.put(1, 2000L);
+        Map m3 =  Maps.newHashMap();
+        m3.put(1, 3000L);
+        Map m4 =  Maps.newHashMap();
+        m4.put(1, 4000L);
+
+        // append first
+        CubeSegment seg1 = mgr.appendSegment(cube, null, new SegmentRange(0L, 1000L), null, m1);
+        seg1.setStatus(SegmentStatusEnum.READY);
+
+
+        CubeSegment seg2 = mgr.appendSegment(cube, null, new SegmentRange(1000L, 2000L), m1, m2);
+        seg2.setStatus(SegmentStatusEnum.READY);
+
+
+        CubeSegment seg3 = mgr.mergeSegments(cube, null, new SegmentRange(0L, 2000L), true);
+        seg3.setStatus(SegmentStatusEnum.NEW);
+
+
+        CubeSegment seg4 = mgr.appendSegment(cube, null, new SegmentRange(2000L, 3000L), m2, m3);
+        seg4.setStatus(SegmentStatusEnum.NEW);
+        seg4.setLastBuildJobID("test");
+        seg4.setStorageLocationIdentifier("test");
+
+
+        CubeSegment seg5 = mgr.appendSegment(cube, null, new SegmentRange(3000L, 4000L), m3, m4);
+        seg5.setStatus(SegmentStatusEnum.READY);
+
+        CubeUpdate cubeBuilder = new CubeUpdate(cube);
+
+        mgr.updateCube(cubeBuilder);
+
+
+        mgr.promoteNewlyBuiltSegments(cube, seg4);
+
+        assertTrue(cube.getSegments().size() == 5);
+
+        assertTrue(cube.getSegmentById(seg1.getUuid()) != null && cube.getSegmentById(seg1.getUuid()).getStatus() == SegmentStatusEnum.READY);
+        assertTrue(cube.getSegmentById(seg2.getUuid()) != null && cube.getSegmentById(seg2.getUuid()).getStatus() == SegmentStatusEnum.READY);
+        assertTrue(cube.getSegmentById(seg3.getUuid()) != null && cube.getSegmentById(seg3.getUuid()).getStatus() == SegmentStatusEnum.NEW);
+        assertTrue(cube.getSegmentById(seg4.getUuid()) != null && cube.getSegmentById(seg4.getUuid()).getStatus() == SegmentStatusEnum.READY);
+        assertTrue(cube.getSegmentById(seg5.getUuid()) != null && cube.getSegmentById(seg5.getUuid()).getStatus() == SegmentStatusEnum.READY);
+
+    }
+
+
+    @Test
+    public void testConcurrentMergeAndMerge() throws Exception {
+        System.setProperty("kylin.cube.max-building-segments", "10");
+        CubeManager mgr = CubeManager.getInstance(getTestConfig());
+        CubeInstance cube = mgr.getCube("test_kylin_cube_with_slr_empty");
+
+        // no segment at first
+        assertEquals(0, cube.getSegments().size());
+        Map m1 =  Maps.newHashMap();
+        m1.put(1, 1000L);
+        Map m2 =  Maps.newHashMap();
+        m2.put(1, 2000L);
+        Map m3 =  Maps.newHashMap();
+        m3.put(1, 3000L);
+        Map m4 =  Maps.newHashMap();
+        m4.put(1, 4000L);
+
+        // append first
+        CubeSegment seg1 = mgr.appendSegment(cube, null, new SegmentRange(0L, 1000L), null, m1);
+        seg1.setStatus(SegmentStatusEnum.READY);
+
+        CubeSegment seg2 = mgr.appendSegment(cube, null, new SegmentRange(1000L, 2000L), m1, m2);
+        seg2.setStatus(SegmentStatusEnum.READY);
+
+        CubeSegment seg3 = mgr.appendSegment(cube, null, new SegmentRange(2000L, 3000L), m2, m3);
+        seg3.setStatus(SegmentStatusEnum.READY);
+
+        CubeSegment seg4 = mgr.appendSegment(cube, null, new SegmentRange(3000L, 4000L), m3, m4);
+        seg4.setStatus(SegmentStatusEnum.READY);
+
+
+
+        CubeSegment merge1 = mgr.mergeSegments(cube, null, new SegmentRange(0L, 2000L), true);
+        merge1.setStatus(SegmentStatusEnum.NEW);
+        merge1.setLastBuildJobID("test");
+        merge1.setStorageLocationIdentifier("test");
+
+        CubeSegment merge2 = mgr.mergeSegments(cube, null, new SegmentRange(2000L, 4000L), true);
+        merge2.setStatus(SegmentStatusEnum.NEW);
+        merge2.setLastBuildJobID("test");
+        merge2.setStorageLocationIdentifier("test");
+
+        CubeUpdate cubeBuilder = new CubeUpdate(cube);
+        mgr.updateCube(cubeBuilder);
+
+
+        mgr.promoteNewlyBuiltSegments(cube, merge1);
+
+        assertTrue(cube.getSegments().size() == 4);
+
+        assertTrue(cube.getSegmentById(seg1.getUuid()) == null);
+        assertTrue(cube.getSegmentById(seg2.getUuid()) == null);
+        assertTrue(cube.getSegmentById(merge1.getUuid()) != null && cube.getSegmentById(merge1.getUuid()).getStatus() == SegmentStatusEnum.READY);
+        assertTrue(cube.getSegmentById(seg3.getUuid()) != null && cube.getSegmentById(seg3.getUuid()).getStatus() == SegmentStatusEnum.READY);
+        assertTrue(cube.getSegmentById(seg4.getUuid()) != null && cube.getSegmentById(seg4.getUuid()).getStatus() == SegmentStatusEnum.READY);
+        assertTrue(cube.getSegmentById(merge2.getUuid()) != null && cube.getSegmentById(merge2.getUuid()).getStatus() == SegmentStatusEnum.NEW);
 
     }
 
@@ -126,7 +248,7 @@ public class CubeManagerTest extends LocalFileMetadataTestCase {
         final ResourceStore store = ResourceStore.getStore(getTestConfig());
         final NavigableSet<String> cubePath = store.listResources(ResourceStore.CUBE_RESOURCE_ROOT);
         assertTrue(cubePath.size() > 1);
-        
+
         final List<CubeInstance> cubes = store.getAllResources(ResourceStore.CUBE_RESOURCE_ROOT, CubeInstance.class, CubeManager.CUBE_SERIALIZER);
         assertEquals(cubePath.size(), cubes.size());
     }
@@ -145,52 +267,53 @@ public class CubeManagerTest extends LocalFileMetadataTestCase {
         assertEquals(0, cube.getSegments().size());
 
         // append first
-        CubeSegment seg1 = mgr.appendSegments(cube, 1000);
+        CubeSegment seg1 = mgr.appendSegment(cube, new TSRange(0L, 1000L));
         seg1.setStatus(SegmentStatusEnum.READY);
 
-        CubeSegment seg3 = mgr.appendSegments(cube, 2000, 4000, false, false);
+        CubeSegment seg3 = mgr.appendSegment(cube, new TSRange(2000L, 4000L));
         seg3.setStatus(SegmentStatusEnum.READY);
-
-        CubeUpdate cubeBuilder = new CubeUpdate(cube);
-        cubeBuilder.setToAddSegs(seg3);
-        cubeBuilder.setToUpdateSegs(seg1);
-
-        mgr.updateCube(cubeBuilder);
 
         assertEquals(2, cube.getSegments().size());
 
-        CubeSegment mergedSeg = mgr.autoMergeCubeSegments(cube);
+        SegmentRange mergedSeg = cube.autoMergeCubeSegments();
 
         assertTrue(mergedSeg == null);
 
         // append a new seg which will be merged
 
-        CubeSegment seg4 = mgr.appendSegments(cube, 4000, 8000, false, false);
+        CubeSegment seg4 = mgr.appendSegment(cube, new TSRange(4000L, 8000L));
         seg4.setStatus(SegmentStatusEnum.READY);
-
-        cubeBuilder = new CubeUpdate(cube);
-        cubeBuilder.setToAddSegs(seg4);
-
-        mgr.updateCube(cubeBuilder);
 
         assertEquals(3, cube.getSegments().size());
 
-        mergedSeg = mgr.autoMergeCubeSegments(cube);
+        mergedSeg = cube.autoMergeCubeSegments();
 
         assertTrue(mergedSeg != null);
-        assertTrue(mergedSeg.getDateRangeStart() == 2000 && mergedSeg.getDateRangeEnd() == 8000);
+        assertTrue((Long) mergedSeg.start.v == 2000 && (Long) mergedSeg.end.v == 8000);
 
         // fill the gap
 
-        CubeSegment seg2 = mgr.appendSegments(cube, 1000, 2000, true, true);
+        CubeSegment seg2 = mgr.appendSegment(cube, new TSRange(1000L, 2000L));
         seg2.setStatus(SegmentStatusEnum.READY);
 
         assertEquals(4, cube.getSegments().size());
 
-        mergedSeg = mgr.autoMergeCubeSegments(cube);
+        mergedSeg = cube.autoMergeCubeSegments();
 
         assertTrue(mergedSeg != null);
-        assertTrue(mergedSeg.getDateRangeStart() == 0 && mergedSeg.getDateRangeEnd() == 8000);
+        assertTrue((Long) mergedSeg.start.v == 0 && (Long) mergedSeg.end.v == 8000);
+    }
+
+    @Test
+    public void testGetCubeNameWithNamespace() {
+        System.setProperty("kylin.storage.hbase.table-name-prefix", "HELLO_");
+        try {
+            CubeManager mgr = CubeManager.getInstance(getTestConfig());
+            String tablename = mgr.generateStorageLocation();
+            assertTrue(tablename.startsWith("HELLO_"));
+        } finally {
+            System.clearProperty("kylin.storage.hbase.table-name-prefix");
+        }
     }
 
     public CubeDescManager getCubeDescManager() {

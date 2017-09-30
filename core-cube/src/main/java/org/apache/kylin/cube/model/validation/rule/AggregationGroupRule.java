@@ -19,16 +19,20 @@
 package org.apache.kylin.cube.model.validation.rule;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
 
 import org.apache.commons.collections.CollectionUtils;
-import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.cube.model.AggregationGroup;
 import org.apache.kylin.cube.model.CubeDesc;
 import org.apache.kylin.cube.model.validation.IValidatorRule;
 import org.apache.kylin.cube.model.validation.ResultLevel;
 import org.apache.kylin.cube.model.validation.ValidateContext;
+
+import com.google.common.collect.Iterables;
+import com.google.common.collect.Lists;
 
 /**
  *  find forbid overlaps in each AggregationGroup
@@ -41,26 +45,25 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
         inner(cube, context);
     }
 
-    private int count(String[][] input) {
-        if (input == null) {
-            return 0;
-        } else {
-            return input.length;
-        }
+    public AggregationGroupRule() {
     }
 
     private void inner(CubeDesc cube, ValidateContext context) {
-        int maxSize = getMaxAgrGroupSize();
+
+        if (cube.getAggregationGroups() == null || cube.getAggregationGroups().size() == 0) {
+            context.addResult(ResultLevel.ERROR, "Cube should have at least one Aggregation group.");
+            return;
+        }
 
         int index = 0;
         for (AggregationGroup agg : cube.getAggregationGroups()) {
             if (agg.getIncludes() == null) {
-                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " includes field not set");
+                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " 'includes' field not set");
                 continue;
             }
 
             if (agg.getSelectRule() == null) {
-                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " select rule field not set");
+                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " 'select rule' field not set");
                 continue;
             }
 
@@ -72,15 +75,15 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
             }
 
             Set<String> mandatoryDims = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            if (agg.getSelectRule().mandatory_dims != null) {
-                for (String m : agg.getSelectRule().mandatory_dims) {
+            if (agg.getSelectRule().mandatoryDims != null) {
+                for (String m : agg.getSelectRule().mandatoryDims) {
                     mandatoryDims.add(m);
                 }
             }
 
             Set<String> hierarchyDims = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            if (agg.getSelectRule().hierarchy_dims != null) {
-                for (String[] ss : agg.getSelectRule().hierarchy_dims) {
+            if (agg.getSelectRule().hierarchyDims != null) {
+                for (String[] ss : agg.getSelectRule().hierarchyDims) {
                     for (String s : ss) {
                         hierarchyDims.add(s);
                     }
@@ -88,8 +91,8 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
             }
 
             Set<String> jointDims = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            if (agg.getSelectRule().joint_dims != null) {
-                for (String[] ss : agg.getSelectRule().joint_dims) {
+            if (agg.getSelectRule().jointDims != null) {
+                for (String[] ss : agg.getSelectRule().jointDims) {
                     for (String s : ss) {
                         jointDims.add(s);
                     }
@@ -97,37 +100,33 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
             }
 
             if (!includeDims.containsAll(mandatoryDims) || !includeDims.containsAll(hierarchyDims) || !includeDims.containsAll(jointDims)) {
-                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " Include dims not containing all the used dims");
-                continue;
-            }
-
-            Set<String> normalDims = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            normalDims.addAll(includeDims);
-            normalDims.removeAll(mandatoryDims);
-            normalDims.removeAll(hierarchyDims);
-            normalDims.removeAll(jointDims);
-
-            int normalDimSize = normalDims.size();
-            int hierarchySize = count(agg.getSelectRule().hierarchy_dims);
-            int jointSize = count(agg.getSelectRule().joint_dims);
-
-            if (mandatoryDims.size() + normalDimSize + hierarchySize + jointSize > maxSize) {
-                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " has too many dimensions");
+                List<String> notIncluded = Lists.newArrayList();
+                final Iterable<String> all = Iterables.unmodifiableIterable(Iterables.concat(mandatoryDims, hierarchyDims, jointDims));
+                for (String dim : all) {
+                    if (includeDims.contains(dim) == false) {
+                        notIncluded.add(dim);
+                    }
+                }
+                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " 'includes' dimensions not include all the dimensions:" + notIncluded.toString());
                 continue;
             }
 
             if (CollectionUtils.containsAny(mandatoryDims, hierarchyDims)) {
-                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " mandatory dims overlap with hierarchy dims");
+                Set<String> intersection = new HashSet<>(mandatoryDims);
+                intersection.retainAll(hierarchyDims);
+                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " mandatory dimension has overlap with hierarchy dimension: " + intersection.toString());
                 continue;
             }
             if (CollectionUtils.containsAny(mandatoryDims, jointDims)) {
-                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " mandatory dims overlap with joint dims");
+                Set<String> intersection = new HashSet<>(mandatoryDims);
+                intersection.retainAll(jointDims);
+                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " mandatory dimension has overlap with joint dimension: " + intersection.toString());
                 continue;
             }
 
             int jointDimNum = 0;
-            if (agg.getSelectRule().joint_dims != null) {
-                for (String[] joints : agg.getSelectRule().joint_dims) {
+            if (agg.getSelectRule().jointDims != null) {
+                for (String[] joints : agg.getSelectRule().jointDims) {
 
                     Set<String> oneJoint = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                     for (String s : joints) {
@@ -135,14 +134,14 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
                     }
 
                     if (oneJoint.size() < 2) {
-                        context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " require at least 2 dims in a joint");
+                        context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " require at least 2 dimensions in a joint: " + oneJoint.toString());
                         continue;
                     }
                     jointDimNum += oneJoint.size();
 
                     int overlapHierarchies = 0;
-                    if (agg.getSelectRule().hierarchy_dims != null) {
-                        for (String[] oneHierarchy : agg.getSelectRule().hierarchy_dims) {
+                    if (agg.getSelectRule().hierarchyDims != null) {
+                        for (String[] oneHierarchy : agg.getSelectRule().hierarchyDims) {
                             Set<String> share = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
                             share.addAll(CollectionUtils.intersection(oneJoint, Arrays.asList(oneHierarchy)));
 
@@ -150,20 +149,45 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
                                 overlapHierarchies++;
                             }
                             if (share.size() > 1) {
-                                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " joint columns overlap with more than 1 dim in same hierarchy");
+                                context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " joint dimensions has overlap with more than 1 dimensions in same hierarchy: " + share.toString());
                                 continue;
                             }
                         }
 
                         if (overlapHierarchies > 1) {
-                            context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " joint columns overlap with more than 1 hierarchies");
+                            context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " joint dimensions has overlap with more than 1 hierarchies");
                             continue;
                         }
                     }
                 }
 
                 if (jointDimNum != jointDims.size()) {
-                    context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " a dim exist in more than one joint");
+
+                    Set<String> existing = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                    Set<String> overlap = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                    for (String[] joints : agg.getSelectRule().jointDims) {
+                        Set<String> oneJoint = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+                        for (String s : joints) {
+                            oneJoint.add(s);
+                        }
+                        if (CollectionUtils.containsAny(existing, oneJoint)) {
+                            overlap.addAll(CollectionUtils.intersection(existing, oneJoint));
+                        }
+                        existing.addAll(oneJoint);
+                    }
+                    context.addResult(ResultLevel.ERROR, "Aggregation group " + index + " a dimension exists in more than one joint: " + overlap.toString());
+                    continue;
+                }
+            }
+            long combination = 0;
+            try {
+                combination = agg.calculateCuboidCombination();
+            } catch (Exception ex) {
+                combination = getMaxCombinations(cube) + 1;
+            } finally {
+                if (combination > getMaxCombinations(cube)) {
+                    String msg = "Aggregation group " + index + " has too many combinations, current combination is " + combination + ", max allowed combination is " + getMaxCombinations(cube) + "; use 'mandatory'/'hierarchy'/'joint' to optimize; or update 'kylin.cube.aggrgroup.max-combination' to a bigger value.";
+                    context.addResult(ResultLevel.ERROR, msg);
                     continue;
                 }
             }
@@ -172,7 +196,7 @@ public class AggregationGroupRule implements IValidatorRule<CubeDesc> {
         }
     }
 
-    protected int getMaxAgrGroupSize() {
-        return KylinConfig.getInstanceFromEnv().getCubeAggrGroupMaxSize();
+    protected long getMaxCombinations(CubeDesc cubeDesc) {
+        return cubeDesc.getConfig().getCubeAggrGroupMaxCombination();
     }
 }

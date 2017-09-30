@@ -18,23 +18,23 @@
 
 package org.apache.kylin.engine.mr.steps;
 
+import java.io.IOException;
+
 import org.apache.hadoop.io.Text;
 import org.apache.kylin.engine.mr.KylinReducer;
-
-import java.io.IOException;
 
 /**
  * @author yangli9
  */
-public class FactDistinctColumnsCombiner extends KylinReducer<Text, Text, Text, Text> {
+public class FactDistinctColumnsCombiner extends KylinReducer<SelfDefineSortableKey, Text, SelfDefineSortableKey, Text> {
 
     @Override
-    protected void setup(Context context) throws IOException {
+    protected void doSetup(Context context) throws IOException {
         super.bindCurrentConfiguration(context.getConfiguration());
     }
 
     @Override
-    public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
+    public void doReduce(SelfDefineSortableKey key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
 
         // for hll, each key only has one output, no need to do local combine;
         // for normal col, values are empty text

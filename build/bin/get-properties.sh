@@ -17,16 +17,14 @@
 # limitations under the License.
 #
 
+source $(cd -P -- "$(dirname -- "$0")" && pwd -P)/header.sh
+
 if [ $# != 1 ]
 then
     echo 'invalid input'
     exit -1
 fi
 
-result=
-for i in `cat ${KYLIN_HOME}/conf/kylin.properties | grep -w "$1" | grep -v '^#' |awk -F '=' '{print $2}' | cut -c 1-`
-do
-   :
-   result=$i
-done
-echo $result
+tool_jar=$(ls $KYLIN_HOME/tool/kylin-tool-*.jar)
+result=`java -cp $tool_jar -Dlog4j.configuration=file:${KYLIN_HOME}/conf/kylin-tools-log4j.properties org.apache.kylin.tool.KylinConfigCLI $1 2>/dev/null`
+echo "$result"

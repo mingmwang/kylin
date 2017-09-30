@@ -152,16 +152,16 @@ KylinApp
       var convertedMillis = item;
       if (gmttimezone.indexOf("GMT+") != -1) {
         var offset = gmttimezone.substr(4, 1);
-        convertedMillis = item + offset * 60 * 60000 + localOffset * 60000;
+        convertedMillis = new Date(item).getTime() + offset * 60 * 60000 + localOffset * 60000;
       }
       else if (gmttimezone.indexOf("GMT-") != -1) {
         var offset = gmttimezone.substr(4, 1);
-        convertedMillis = item - offset * 60 * 60000 + localOffset * 60000;
+        convertedMillis = new Date(item).getTime() - offset * 60 * 60000 + localOffset * 60000;
       }
       else {
         // return PST by default
         timezone = "PST";
-        convertedMillis = item - 8 * 60 * 60000 + localOffset * 60000;
+        convertedMillis = new Date(item).getTime() - 8 * 60 * 60000 + localOffset * 60000;
       }
       return $filter('date')(convertedMillis, format) + " " + timezone;
 
@@ -190,4 +190,57 @@ KylinApp
         return _day +" (Days)";
       }
     }
+  }).filter('inDimNotInMea', function ($filter) {
+    return function (inputArr, table, arr) {
+      var out=[];
+      angular.forEach(arr,function(item) {
+        if (item.table == table) {
+          angular.forEach(inputArr, function (inputItem) {
+            if (item.columns.indexOf(inputItem.name) == -1) {
+              out.push(inputItem);
+            }
+          });
+        }
+      });
+      return out;
+    }
+  }).filter('notInJoin', function ($filter) {
+    return function (inputArr, table, arr) {
+      var out=[];
+      angular.forEach(inputArr, function (inputItem) {
+        var isInJoin = false
+         angular.forEach(arr,function(item) {
+            var checkColumn = inputItem.name ? table + '.' + inputItem.name : inputItem;
+            if (item.join.foreign_key.indexOf(checkColumn) !== -1 || item.join.primary_key.indexOf(checkColumn) !== -1) {
+              isInJoin = true;
+            }
+          });
+         if (!isInJoin) {
+           out.push(inputItem);
+         }
+      });
+      return out;
+    }
+  }).filter('inMeaNotInDim', function ($filter) {
+        return function (inputArr, table, arr) {
+          var out=[];
+          angular.forEach(inputArr, function (inputItem) {
+            if (arr.indexOf(table+"."+inputItem.name) == -1) {
+              out.push(inputItem);
+            }
+          });
+          return out;
+        }
+  }).filter('assignedMeasureNames', function ($filter) {
+    //return the measures that haven't assign to column family
+    return function (inputArr, assignedArr) {
+      var out = [];
+      angular.forEach(inputArr, function (inputItem) {
+        if (assignedArr.indexOf(inputItem) == -1) {
+          out.push(inputItem);
+        }
+      });
+      return out;
+    }
   });
+

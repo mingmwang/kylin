@@ -18,8 +18,10 @@
 
 package org.apache.kylin.metadata.realization;
 
-public enum RealizationStatusEnum {
+import java.io.Serializable;
 
-    DISABLED, BUILDING, READY, DESCBROKEN
+public enum RealizationStatusEnum implements Serializable{
+
+    DISABLED, READY, DESCBROKEN
 
 }

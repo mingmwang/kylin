@@ -21,7 +21,6 @@ package org.apache.kylin.common.util;
 import java.util.List;
 import java.util.Map;
 import java.util.NavigableMap;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 
@@ -29,7 +28,6 @@ import org.junit.Assert;
 import org.junit.Test;
 
 import com.google.common.collect.Range;
-import com.google.common.collect.Ranges;
 import com.google.common.collect.Sets;
 
 /**
@@ -41,31 +39,31 @@ public class RangeUtilTest {
         map.put(3, 3);
         map.put(1, 1);
         map.put(2, 2);
-        Map<Integer, Integer> subMap = RangeUtil.filter(map, Ranges.<Integer> all());
+        Map<Integer, Integer> subMap = RangeUtil.filter(map, Range.<Integer> all());
         Assert.assertEquals(subMap.size(), 3);
 
-        subMap = RangeUtil.filter(map, Ranges.atLeast(2));
+        subMap = RangeUtil.filter(map, Range.atLeast(2));
         Assert.assertEquals(subMap.size(), 2);
 
-        subMap = RangeUtil.filter(map, Ranges.greaterThan(2));
+        subMap = RangeUtil.filter(map, Range.greaterThan(2));
         Assert.assertEquals(subMap.size(), 1);
 
-        subMap = RangeUtil.filter(map, Ranges.greaterThan(0));
+        subMap = RangeUtil.filter(map, Range.greaterThan(0));
         Assert.assertEquals(subMap.size(), 3);
 
-        subMap = RangeUtil.filter(map, Ranges.greaterThan(5));
+        subMap = RangeUtil.filter(map, Range.greaterThan(5));
         Assert.assertEquals(subMap.size(), 0);
 
-        subMap = RangeUtil.filter(map, Ranges.atMost(2));
+        subMap = RangeUtil.filter(map, Range.atMost(2));
         Assert.assertEquals(subMap.size(), 2);
 
-        subMap = RangeUtil.filter(map, Ranges.lessThan(2));
+        subMap = RangeUtil.filter(map, Range.lessThan(2));
         Assert.assertEquals(subMap.size(), 1);
 
-        subMap = RangeUtil.filter(map, Ranges.lessThan(5));
+        subMap = RangeUtil.filter(map, Range.lessThan(5));
         Assert.assertEquals(subMap.size(), 3);
 
-        subMap = RangeUtil.filter(map, Ranges.lessThan(0));
+        subMap = RangeUtil.filter(map, Range.lessThan(0));
         Assert.assertEquals(subMap.size(), 0);
     }
 

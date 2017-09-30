@@ -23,6 +23,7 @@ import java.nio.ByteBuffer;
 import org.apache.kylin.common.util.ImmutableBitSet;
 import org.apache.kylin.dimension.DimensionEncoding;
 import org.apache.kylin.measure.MeasureAggregator;
+import org.apache.kylin.metadata.datatype.DataTypeSerializer;
 
 public interface IGTCodeSystem {
 
@@ -35,7 +36,7 @@ public interface IGTCodeSystem {
 
     /** Return the max possible length of a column */
     int maxCodeLength(int col);
-    
+
     /** Return a DimensionEncoding if the underlying column is backed by a cube dimension, return null otherwise */
     DimensionEncoding getDimEnc(int col);
 
@@ -62,4 +63,6 @@ public interface IGTCodeSystem {
     /** Return aggregators for metrics */
     MeasureAggregator<?>[] newMetricsAggregators(ImmutableBitSet columns, String[] aggrFunctions);
 
+    /** Return specific DataTypeSerializer */
+    DataTypeSerializer<?> getSerializer(int col);
 }

@@ -32,10 +32,10 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
-import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.NoSuchElementException;
 import java.util.Random;
 import java.util.TreeSet;
 
@@ -44,12 +44,61 @@ import org.junit.Test;
 public class TrieDictionaryTest {
 
     public static void main(String[] args) throws Exception {
-        InputStream is = new FileInputStream("src/test/resources/dict/dw_category_grouping_names.dat");
-        // InputStream is =
-        // Util.getPackageResourceAsStream(TrieDictionaryTest.class,
-        // "eng_com.dic");
-        ArrayList<String> str = loadStrings(is);
-        benchmarkStringDictionary(str);
+        int count = (int) (Integer.MAX_VALUE * 0.8 / 64);
+        benchmarkStringDictionary(new RandomStrings(count));
+    }
+
+    private static class RandomStrings implements Iterable<String> {
+        final private int size;
+
+        public RandomStrings(int size) {
+            this.size = size;
+            System.out.println("size = " + size);
+        }
+
+        @Override
+        public Iterator<String> iterator() {
+            return new Iterator<String>() {
+                Random rand = new Random(1000);
+                int i = 0;
+
+                @Override
+                public boolean hasNext() {
+                    return i < size;
+                }
+
+                @Override
+                public String next() {
+                    if (hasNext() == false)
+                        throw new NoSuchElementException();
+
+                    i++;
+                    if (i % 1000000 == 0)
+                        System.out.println(i);
+
+                    return nextString();
+                }
+
+                private String nextString() {
+                    StringBuffer buf = new StringBuffer();
+                    for (int i = 0; i < 64; i++) {
+                        int v = rand.nextInt(16);
+                        char c;
+                        if (v >= 0 && v <= 9)
+                            c = (char) ('0' + v);
+                        else
+                            c = (char) ('a' + v - 10);
+                        buf.append(c);
+                    }
+                    return buf.toString();
+                }
+
+                @Override
+                public void remove() {
+                    throw new UnsupportedOperationException();
+                }
+            };
+        }
     }
 
     @Test
@@ -172,7 +221,17 @@ public class TrieDictionaryTest {
         testStringDictionary(str, null);
     }
 
-    private static void benchmarkStringDictionary(ArrayList<String> str) throws UnsupportedEncodingException {
+    @Test
+    public void testAllNullValue() {
+        ArrayList<String> strs = new ArrayList<String>();
+        strs.add("");
+        TrieDictionaryBuilder<String> builder = newDictBuilder(strs);
+        TrieDictionary<String> dict = builder.build(0);
+        assertEquals(1, dict.getSize());
+        assertEquals(0, dict.getIdFromValue(""));
+    }
+
+    private static void benchmarkStringDictionary(Iterable<String> str) throws IOException {
         TrieDictionaryBuilder<String> b = newDictBuilder(str);
         b.stats().print();
         TrieDictionary<String> dict = b.build(0);
@@ -205,13 +264,14 @@ public class TrieDictionaryTest {
         // following jvm options may help
         // -XX:CompileThreshold=1500
         // -XX:+PrintCompilation
+        System.out.println("Benchmark awaitig...");
         benchmark("Warm up", dict, set, map, strArray, array);
         benchmark("Benchmark", dict, set, map, strArray, array);
     }
 
     private static int benchmark(String msg, TrieDictionary<String> dict, TreeSet<String> set, HashMap<String, Integer> map, String[] strArray, byte[][] array) {
         int n = set.size();
-        int times = 10 * 1000 * 1000 / n; // run 10 million lookups
+        int times = Math.max(10 * 1000 * 1000 / n, 1); // run 10 million lookups
         int keep = 0; // make sure JIT don't OPT OUT function calls under test
         byte[] valueBytes = new byte[dict.getSizeOfValue()];
         long start;
@@ -232,7 +292,7 @@ public class TrieDictionaryTest {
         start = System.currentTimeMillis();
         for (int i = 0; i < times; i++) {
             for (int j = 0; j < n; j++) {
-                keep |= dict.getIdFromValueBytes(array[j], 0, array[j].length);
+                keep |= dict.getIdFromValueBytesWithoutCache(array[j], 0, array[j].length, 0);
             }
         }
         long timeValueToIdByDict = System.currentTimeMillis() - start;
@@ -254,7 +314,7 @@ public class TrieDictionaryTest {
         start = System.currentTimeMillis();
         for (int i = 0; i < times; i++) {
             for (int j = 0; j < n; j++) {
-                keep |= dict.getValueBytesFromId(j, valueBytes, 0);
+                keep |= dict.getValueBytesFromIdWithoutCache(j).length;
             }
         }
         long timeIdToValueByDict = System.currentTimeMillis() - start;
@@ -300,9 +360,6 @@ public class TrieDictionaryTest {
         // test null value
         int nullId = dict.getIdFromValue(null);
         assertNull(dict.getValueFromId(nullId));
-        int nullId2 = dict.getIdFromValueBytes(null, 0, 0);
-        assertEquals(dict.getValueBytesFromId(nullId2, null, 0), -1);
-        assertEquals(nullId, nullId2);
     }
 
     private static TrieDictionary<String> testSerialize(TrieDictionary<String> dict) {
@@ -322,7 +379,7 @@ public class TrieDictionaryTest {
         }
     }
 
-    private static TrieDictionaryBuilder<String> newDictBuilder(ArrayList<String> str) {
+    private static TrieDictionaryBuilder<String> newDictBuilder(Iterable<String> str) {
         TrieDictionaryBuilder<String> b = new TrieDictionaryBuilder<String>(new StringBytesConverter());
         for (String s : str)
             b.addValue(s);

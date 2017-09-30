@@ -27,7 +27,8 @@ import java.util.Iterator;
 import java.util.List;
 
 import org.apache.kylin.common.util.ImmutableBitSet;
-import org.apache.kylin.metadata.datatype.LongMutable;
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
+import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Test;
 
@@ -36,21 +37,26 @@ import com.google.common.collect.Lists;
 /**
  * Created by dongli on 12/16/15.
  */
-public class AggregationCacheSpillTest {
-
+public class AggregationCacheSpillTest extends LocalFileMetadataTestCase {
     final static int DATA_CARDINALITY = 40000;
     final static int DATA_REPLICATION = 2;
+    final static List<GTRecord> TEST_DATA = Lists.newArrayListWithCapacity(DATA_CARDINALITY * DATA_REPLICATION);
 
-    final static GTInfo INFO = UnitTestSupport.hllInfo();
-    final static List<GTRecord> TEST_DATA = Lists.newArrayListWithCapacity(DATA_CARDINALITY * DATA_REPLICATION);;
+    static GTInfo INFO;
 
     @BeforeClass
     public static void beforeClass() {
-        System.setProperty("log4j.configuration", "kylin-log4j.properties");
+        staticCreateTestMetadata();
 
+        INFO = UnitTestSupport.hllInfo();
         final List<GTRecord> data = UnitTestSupport.mockupHllData(INFO, DATA_CARDINALITY);
         for (int i = 0; i < DATA_REPLICATION; i++)
             TEST_DATA.addAll(data);
+    }
+
+    @AfterClass
+    public static void afterClass() throws Exception {
+        cleanAfterClass();
     }
 
     @Test
@@ -59,11 +65,6 @@ public class AggregationCacheSpillTest {
             @Override
             public GTInfo getInfo() {
                 return INFO;
-            }
-
-            @Override
-            public int getScannedRowCount() {
-                throw new UnsupportedOperationException();
             }
 
             @Override
@@ -76,7 +77,7 @@ public class AggregationCacheSpillTest {
             }
         };
 
-        GTScanRequest scanRequest = new GTScanRequest(INFO, null, new ImmutableBitSet(0, 3), new ImmutableBitSet(0, 3), new ImmutableBitSet(3, 6), new String[] { "SUM", "SUM", "COUNT_DISTINCT" }, null, true, 0.5);
+        GTScanRequest scanRequest = new GTScanRequestBuilder().setInfo(INFO).setRanges(null).setDimensions(new ImmutableBitSet(0, 3)).setAggrGroupBy(new ImmutableBitSet(0, 3)).setAggrMetrics(new ImmutableBitSet(3, 6)).setAggrMetricsFuncs(new String[] { "SUM", "SUM", "COUNT_DISTINCT" }).setFilterPushDown(null).setAggCacheMemThreshold(0.5).createGTScanRequest();
 
         GTAggregateScanner scanner = new GTAggregateScanner(inputScanner, scanRequest);
 
@@ -84,7 +85,7 @@ public class AggregationCacheSpillTest {
         for (GTRecord record : scanner) {
             assertNotNull(record);
             Object[] returnRecord = record.getValues();
-            assertEquals(20, ((LongMutable) returnRecord[3]).get());
+            assertEquals(20, ((Long) returnRecord[3]).longValue());
             assertEquals(21, ((BigDecimal) returnRecord[4]).longValue());
             count++;
 
@@ -103,11 +104,6 @@ public class AggregationCacheSpillTest {
             }
 
             @Override
-            public int getScannedRowCount() {
-                throw new UnsupportedOperationException();
-            }
-
-            @Override
             public void close() throws IOException {
             }
 
@@ -118,7 +114,7 @@ public class AggregationCacheSpillTest {
         };
 
         // all-in-mem testcase
-        GTScanRequest scanRequest = new GTScanRequest(INFO, null, new ImmutableBitSet(0, 3), new ImmutableBitSet(1, 3), new ImmutableBitSet(3, 6), new String[] { "SUM", "SUM", "COUNT_DISTINCT" }, null, true, 0.5);
+        GTScanRequest scanRequest = new GTScanRequestBuilder().setInfo(INFO).setRanges(null).setDimensions(new ImmutableBitSet(0, 3)).setAggrGroupBy(new ImmutableBitSet(1, 3)).setAggrMetrics(new ImmutableBitSet(3, 6)).setAggrMetricsFuncs(new String[] { "SUM", "SUM", "COUNT_DISTINCT" }).setFilterPushDown(null).setAggCacheMemThreshold(0.5).createGTScanRequest();
 
         GTAggregateScanner scanner = new GTAggregateScanner(inputScanner, scanRequest);
 
@@ -126,7 +122,7 @@ public class AggregationCacheSpillTest {
         for (GTRecord record : scanner) {
             assertNotNull(record);
             Object[] returnRecord = record.getValues();
-            assertEquals(80000, ((LongMutable) returnRecord[3]).get());
+            assertEquals(80000, ((Long) returnRecord[3]).longValue());
             assertEquals(84000, ((BigDecimal) returnRecord[4]).longValue());
             count++;
 

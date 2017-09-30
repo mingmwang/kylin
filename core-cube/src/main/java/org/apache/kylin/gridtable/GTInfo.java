@@ -31,8 +31,11 @@ import org.apache.kylin.cube.gridtable.CubeCodeSystem;
 import org.apache.kylin.cube.gridtable.TrimmedCubeCodeSystem;
 import org.apache.kylin.metadata.datatype.DataType;
 import org.apache.kylin.metadata.model.TblColRef;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class GTInfo {
+    private static final Logger logger = LoggerFactory.getLogger(GTInfo.class);
 
     public static Builder builder() {
         return new Builder();
@@ -58,7 +61,6 @@ public class GTInfo {
     private GTInfo() {
     }
 
-    
     public String getTableName() {
         return tableName;
     }
@@ -74,7 +76,7 @@ public class GTInfo {
     public int getColumnBlockCount() {
         return colBlocks.length;
     }
-    
+
     public ImmutableBitSet getColumnBlock(int i) {
         return colBlocks[i];
     }
@@ -82,7 +84,7 @@ public class GTInfo {
     public ImmutableBitSet getPrimaryKey() {
         return primaryKey;
     }
-    
+
     public ImmutableBitSet getAllColumns() {
         return colAll;
     }
@@ -273,6 +275,14 @@ public class GTInfo {
         return codeSystem;
     }
 
+    public int getMaxLength() {
+        int ret = 0;
+        for (int i = 0; i < colAll.trueBitCount(); i++) {
+            ret += codeSystem.maxCodeLength(colAll.trueBitAt(i));
+        }
+        return ret;
+    }
+
     public static final BytesSerializer<GTInfo> serializer = new BytesSerializer<GTInfo>() {
         @Override
         public void serialize(GTInfo value, ByteBuffer out) {
@@ -280,11 +290,17 @@ public class GTInfo {
                 BytesUtil.writeAsciiString(CubeCodeSystem.class.getCanonicalName(), out);
                 TrimmedCubeCodeSystem trimmed = ((CubeCodeSystem) value.codeSystem).trimForCoprocessor();
                 TrimmedCubeCodeSystem.serializer.serialize(trimmed, out);
-            } else if (value.codeSystem instanceof GTSampleCodeSystem) {
-                BytesUtil.writeAsciiString(GTSampleCodeSystem.class.getCanonicalName(), out);
-                GTSampleCodeSystem.serializer.serialize((GTSampleCodeSystem) value.codeSystem, out);
+            } else if (value.codeSystem != null) {
+                BytesUtil.writeAsciiString(value.codeSystem.getClass().getCanonicalName(), out);
+                BytesSerializer<IGTCodeSystem> serializer = null;
+                try {
+                    serializer = (BytesSerializer<IGTCodeSystem>) value.codeSystem.getClass().getField("serializer").get(null);
+                } catch (IllegalAccessException | NoSuchFieldException e) {
+                    throw new RuntimeException("failed to get serializer for " + value.codeSystem.getClass(), e);
+                }
+                serializer.serialize(value.codeSystem, out);
             } else {
-                throw new IllegalArgumentException("Can't recognize code system " + value.codeSystem.getClass());
+                throw new IllegalStateException("code system cannot be null");
             }
 
             BytesUtil.writeUTFString(value.tableName, out);
@@ -307,10 +323,14 @@ public class GTInfo {
             String codeSystemType = BytesUtil.readAsciiString(in);
             if (CubeCodeSystem.class.getCanonicalName().equals(codeSystemType)) {
                 codeSystem = TrimmedCubeCodeSystem.serializer.deserialize(in);
-            } else if (GTSampleCodeSystem.class.getCanonicalName().equals(codeSystemType)) {
-                codeSystem = GTSampleCodeSystem.serializer.deserialize(in);
             } else {
-                throw new IllegalArgumentException("Can't recognize code system " + codeSystemType);
+                try {
+                    Class clazz = Class.forName(codeSystemType);
+                    BytesSerializer<IGTCodeSystem> serializer = (BytesSerializer<IGTCodeSystem>) clazz.getField("serializer").get(null);
+                    codeSystem = serializer.deserialize(in);
+                } catch (Exception e) {
+                    throw new RuntimeException("Failed to deserialize IGTCodeSystem " + codeSystemType, e);
+                }
             }
 
             String newTableName = BytesUtil.readUTFString(in);
@@ -333,12 +353,13 @@ public class GTInfo {
             int newRowBlockSize = BytesUtil.readVInt(in);
 
             return GTInfo.builder().setCodeSystem(codeSystem).//
-                    setTableName(newTableName).//
-                    setColumns(newColTypes).//
-                    setColumnPreferIndex(newColPreferIndex).//
-                    setPrimaryKey(newPrimaryKey).//
-                    enableColumnBlock(newColBlocks).//
-                    enableRowBlock(newRowBlockSize).build();
+            setTableName(newTableName).//
+            setColumns(newColTypes).//
+            setColumnPreferIndex(newColPreferIndex).//
+            setPrimaryKey(newPrimaryKey).//
+            enableColumnBlock(newColBlocks).//
+            enableRowBlock(newRowBlockSize).build();
         }
     };
+
 }

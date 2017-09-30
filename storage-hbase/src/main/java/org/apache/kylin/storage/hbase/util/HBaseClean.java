@@ -19,28 +19,29 @@
 package org.apache.kylin.storage.hbase.util;
 
 import java.io.IOException;
-import java.util.Arrays;
 import java.util.List;
 
-import com.google.common.collect.Lists;
 import org.apache.commons.cli.Option;
 import org.apache.commons.cli.OptionBuilder;
 import org.apache.commons.cli.Options;
-import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.hbase.HBaseConfiguration;
 import org.apache.hadoop.hbase.HTableDescriptor;
-import org.apache.hadoop.hbase.client.HBaseAdmin;
-import org.apache.hadoop.util.ToolRunner;
-import org.apache.kylin.engine.mr.common.AbstractHadoopJob;
+import org.apache.hadoop.hbase.TableName;
+import org.apache.hadoop.hbase.client.Admin;
+import org.apache.hadoop.hbase.client.Connection;
+import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.util.AbstractApplication;
+import org.apache.kylin.common.util.OptionsHelper;
 import org.apache.kylin.metadata.realization.IRealizationConstants;
 import org.apache.kylin.storage.hbase.HBaseConnection;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import com.google.common.collect.Lists;
+
 /**
  * clean hbase tables by tag
  */
-public class HBaseClean extends AbstractHadoopJob {
+public class HBaseClean extends AbstractApplication {
 
     @SuppressWarnings("static-access")
     private static final Option OPTION_DELETE = OptionBuilder.withArgName("delete").hasArg().isRequired(true).withDescription("actually delete or not").create("delete");
@@ -49,39 +50,17 @@ public class HBaseClean extends AbstractHadoopJob {
     private static final Option OPTION_TAG = OptionBuilder.withArgName("tag").hasArg().isRequired(true).withDescription("the tag of HTable").create("tag");
 
     protected static final Logger logger = LoggerFactory.getLogger(HBaseClean.class);
+
     boolean delete = false;
     String tag = null;
-
-    @Override
-    public int run(String[] args) throws Exception {
-        Options options = new Options();
-
-        logger.info("jobs args: " + Arrays.toString(args));
-        try {
-            options.addOption(OPTION_DELETE);
-            options.addOption(OPTION_TAG);
-            parseOptions(options, args);
-
-            logger.info("options: '" + getOptionsAsString() + "'");
-            
-            tag = getOptionValue(OPTION_TAG);
-            delete = Boolean.parseBoolean(getOptionValue(OPTION_DELETE));
-
-            cleanUp();
-
-            return 0;
-        } catch (Exception e) {
-            e.printStackTrace(System.err);
-            throw e;
-        }
-    }
 
     private void cleanUp() {
         try {
             // get all kylin hbase tables
-            Configuration conf = HBaseConnection.getCurrentHBaseConfiguration();
-            HBaseAdmin hbaseAdmin = new HBaseAdmin(conf);
-            String tableNamePrefix = IRealizationConstants.SharedHbaseStorageLocationPrefix;
+            KylinConfig kylinConfig = KylinConfig.getInstanceFromEnv();
+            Connection conn = HBaseConnection.get(kylinConfig.getStorageUrl());
+            Admin hbaseAdmin = conn.getAdmin();
+            String tableNamePrefix = kylinConfig.getHBaseTableNamePrefix();
             HTableDescriptor[] tableDescriptors = hbaseAdmin.listTables(tableNamePrefix + ".*");
             List<String> allTablesNeedToBeDropped = Lists.newArrayList();
             for (HTableDescriptor desc : tableDescriptors) {
@@ -95,12 +74,12 @@ public class HBaseClean extends AbstractHadoopJob {
                 // drop tables
                 for (String htableName : allTablesNeedToBeDropped) {
                     logger.info("Deleting HBase table " + htableName);
-                    if (hbaseAdmin.tableExists(htableName)) {
-                        if (hbaseAdmin.isTableEnabled(htableName)) {
-                            hbaseAdmin.disableTable(htableName);
+                    if (hbaseAdmin.tableExists(TableName.valueOf(htableName))) {
+                        if (hbaseAdmin.isTableEnabled(TableName.valueOf(htableName))) {
+                            hbaseAdmin.disableTable(TableName.valueOf(htableName));
                         }
 
-                        hbaseAdmin.deleteTable(htableName);
+                        hbaseAdmin.deleteTable(TableName.valueOf(htableName));
                         logger.info("Deleted HBase table " + htableName);
                     } else {
                         logger.info("HBase table" + htableName + " does not exist");
@@ -121,7 +100,24 @@ public class HBaseClean extends AbstractHadoopJob {
     }
 
     public static void main(String[] args) throws Exception {
-        int exitCode = ToolRunner.run(new HBaseClean(), args);
-        System.exit(exitCode);
+        HBaseClean cli = new HBaseClean();
+        cli.execute(args);
+    }
+
+    @Override
+    protected Options getOptions() {
+        Options options = new Options();
+        options.addOption(OPTION_DELETE);
+        options.addOption(OPTION_TAG);
+        return options;
+
+    }
+
+    @Override
+    protected void execute(OptionsHelper optionsHelper) throws Exception {
+        tag = optionsHelper.getOptionValue(OPTION_TAG);
+        delete = Boolean.parseBoolean(optionsHelper.getOptionValue(OPTION_DELETE));
+
+        cleanUp();
     }
 }

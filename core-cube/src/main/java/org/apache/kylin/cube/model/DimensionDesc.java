@@ -19,13 +19,11 @@
 package org.apache.kylin.cube.model;
 
 import java.util.Arrays;
-import java.util.Map;
 
-import org.apache.commons.lang.NotImplementedException;
-import org.apache.kylin.common.util.StringUtil;
+import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.JoinDesc;
-import org.apache.kylin.metadata.model.LookupDesc;
-import org.apache.kylin.metadata.model.TableDesc;
+import org.apache.kylin.metadata.model.JoinTableDesc;
+import org.apache.kylin.metadata.model.TableRef;
 import org.apache.kylin.metadata.model.TblColRef;
 
 import com.fasterxml.jackson.annotation.JsonAutoDetect;
@@ -35,8 +33,9 @@ import com.google.common.base.Objects;
 
 /**
  */
+@SuppressWarnings("serial")
 @JsonAutoDetect(fieldVisibility = Visibility.NONE, getterVisibility = Visibility.NONE, isGetterVisibility = Visibility.NONE, setterVisibility = Visibility.NONE)
-public class DimensionDesc {
+public class DimensionDesc implements java.io.Serializable {
 
     @JsonProperty("name")
     private String name;
@@ -47,57 +46,39 @@ public class DimensionDesc {
     @JsonProperty("derived")
     private String[] derived;
 
-    private TableDesc tableDesc;
+    private TableRef tableRef;
     private JoinDesc join;
 
     // computed
     private TblColRef[] columnRefs;
 
-    public void init(CubeDesc cubeDesc, Map<String, TableDesc> tables) {
+    public void init(CubeDesc cubeDesc) {
+        DataModelDesc model = cubeDesc.getModel();
+
         if (name != null)
             name = name.toUpperCase();
 
-        if (table != null)
-            table = table.toUpperCase();
-
-        tableDesc = tables.get(this.getTable());
-        if (tableDesc == null)
-            throw new IllegalStateException("Can't find table " + table + " for dimension " + name);
+        tableRef = model.findTable(table);
+        table = tableRef.getAlias();
 
         join = null;
-        for (LookupDesc lookup : cubeDesc.getModel().getLookups()) {
-            if (lookup.getTable().equalsIgnoreCase(this.getTable())) {
-                join = lookup.getJoin();
+        for (JoinTableDesc joinTable : model.getJoinTables()) {
+            if (joinTable.getTableRef().equals(this.tableRef)) {
+                join = joinTable.getJoin();
                 break;
             }
         }
 
-        //        if (isHierarchy && this.column.length > 0) {
-        //            List<HierarchyDesc> hierarchyList = new ArrayList<HierarchyDesc>(3);
-        //            for (int i = 0, n = this.column.length; i < n; i++) {
-        //                String aColumn = this.column[i];
-        //                HierarchyDesc aHierarchy = new HierarchyDesc();
-        //                aHierarchy.setLevel(String.valueOf(i + 1));
-        //                aHierarchy.setColumn(aColumn);
-        //                hierarchyList.add(aHierarchy);
-        //            }
-        //
-        //            this.hierarchy = hierarchyList.toArray(new HierarchyDesc[hierarchyList.size()]);
-        //        }
-        //
-        //        if (hierarchy != null && hierarchy.length == 0)
-        //            hierarchy = null;
-
-        //        if (hierarchy != null) {
-        //            for (HierarchyDesc h : hierarchy)
-        //                h.setColumn(h.getColumn().toUpperCase());
-        //        }
-
+        if (column != null && !"{FK}".equals(column)) {
+            column = model.findColumn(table, column).getName();
+        }
         if (derived != null && derived.length == 0) {
             derived = null;
         }
         if (derived != null) {
-            StringUtil.toUpperCaseArray(derived, derived);
+            for (int i = 0; i < derived.length; i++) {
+                derived[i] = model.findColumn(table, derived[i]).getName();
+            }
         }
         if (derived != null && join == null) {
             throw new IllegalStateException("Derived can only be defined on lookup table, cube " + cubeDesc + ", " + this);
@@ -148,28 +129,59 @@ public class DimensionDesc {
     public String[] getDerived() {
         return derived;
     }
-    
 
     public void setDerived(String[] derived) {
         this.derived = derived;
     }
 
-    public TableDesc getTableDesc() {
-        return this.tableDesc;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        throw new NotImplementedException();
-    }
-
-    @Override
-    public int hashCode() {
-        throw new NotImplementedException();
+    public TableRef getTableRef() {
+        return this.tableRef;
     }
 
     @Override
     public String toString() {
         return Objects.toStringHelper(this).add("name", name).add("table", table).add("column", column).add("derived", Arrays.toString(derived)).add("join", join).toString();
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) {
+            return true;
+        }
+
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+
+        DimensionDesc that = (DimensionDesc) o;
+
+        if (column != null ? !column.equals(that.column) : that.column != null) {
+            return false;
+        }
+
+        if (name != null ? !name.equals(that.name) : that.name != null) {
+            return false;
+        }
+
+        if (table != null ? !table.equals(that.table) : that.table != null) {
+            return false;
+        }
+
+        if (derived != null ? !derived.equals(that.derived) : that.derived != null) {
+            return false;
+        }
+
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        final int prime = 31;
+        int result = 1;
+        result = prime * result + ((name == null) ? 0 : name.hashCode());
+        result = prime * result + ((column == null) ? 0 : column.hashCode());
+        result = prime * result + ((table == null) ? 0 : table.hashCode());
+        result = prime * result + ((derived == null) ? 0 : derived.hashCode());
+        return result;
     }
 }

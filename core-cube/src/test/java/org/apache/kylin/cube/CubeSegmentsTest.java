@@ -24,7 +24,9 @@ import static org.junit.Assert.fail;
 import java.io.IOException;
 
 import org.apache.kylin.common.util.LocalFileMetadataTestCase;
-import org.apache.kylin.common.util.Pair;
+import org.apache.kylin.metadata.model.PartitionDesc;
+import org.apache.kylin.metadata.model.SegmentRange;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
 import org.apache.kylin.metadata.model.SegmentStatusEnum;
 import org.junit.After;
 import org.junit.Before;
@@ -42,26 +44,36 @@ public class CubeSegmentsTest extends LocalFileMetadataTestCase {
         this.cleanupTestMetadata();
     }
 
-    //@Test(expected = IllegalStateException.class)
+    @Test
     public void testAppendNonPartitioned() throws IOException {
         CubeManager mgr = mgr();
         CubeInstance cube = mgr.getCube("test_kylin_cube_without_slr_empty");
 
+        // override partition desc
+        cube.getModel().setPartitionDesc(new PartitionDesc());
+
         // first append, creates a new & single segment
-        CubeSegment seg = mgr.appendSegments(cube, 0);
-        assertEquals(0, seg.getDateRangeStart());
-        assertEquals(Long.MAX_VALUE, seg.getDateRangeEnd());
+        CubeSegment seg = mgr.appendSegment(cube);
+        assertEquals(new TSRange(0L, Long.MAX_VALUE), seg.getTSRange());
+        assertEquals(new TSRange(0L, Long.MAX_VALUE), seg.getSegRange());
         assertEquals(1, cube.getSegments().size());
 
         // second append, throw IllegalStateException because the first segment is not built
-        CubeSegment seg2 = mgr.appendSegments(cube, 0);
-        discard(seg2);
+        try {
+            mgr.appendSegment(cube);
+            fail();
+        } catch (IllegalStateException ex) {
+            // good
+        }
     }
 
-    //@Test(expected = IllegalStateException.class)
+    @Test
     public void testAppendNonPartitioned2() throws IOException {
         CubeManager mgr = mgr();
         CubeInstance cube = mgr.getCube("test_kylin_cube_without_slr_ready");
+
+        // override partition desc
+        cube.getModel().setPartitionDesc(new PartitionDesc());
 
         // assert one ready segment
         assertEquals(1, cube.getSegments().size());
@@ -69,13 +81,18 @@ public class CubeSegmentsTest extends LocalFileMetadataTestCase {
         assertEquals(SegmentStatusEnum.READY, seg.getStatus());
 
         // append again, for non-partitioned cube, it becomes a full refresh
-        CubeSegment seg2 = mgr.appendSegments(cube, 0);
-        assertEquals(0, seg2.getDateRangeStart());
-        assertEquals(Long.MAX_VALUE, seg2.getDateRangeEnd());
+        CubeSegment seg2 = mgr.appendSegment(cube);
+        assertEquals(new TSRange(0L, Long.MAX_VALUE), seg2.getTSRange());
+        assertEquals(new TSRange(0L, Long.MAX_VALUE), seg2.getSegRange());
         assertEquals(2, cube.getSegments().size());
 
         // non-partitioned cannot merge, throw exception
-        mgr.mergeSegments(cube, 0, Long.MAX_VALUE, false);
+        try {
+            mgr.mergeSegments(cube, null, new SegmentRange(0L, Long.MAX_VALUE), false);
+            fail();
+        } catch (IllegalStateException ex) {
+            // good
+        }
     }
 
     @Test
@@ -87,24 +104,24 @@ public class CubeSegmentsTest extends LocalFileMetadataTestCase {
         assertEquals(0, cube.getSegments().size());
 
         // append first
-        CubeSegment seg1 = mgr.appendSegments(cube, 1000);
+        CubeSegment seg1 = mgr.appendSegment(cube, new TSRange(0L, 1000L));
         seg1.setStatus(SegmentStatusEnum.READY);
 
         // append second
-        CubeSegment seg2 = mgr.appendSegments(cube, 2000);
+        CubeSegment seg2 = mgr.appendSegment(cube, new TSRange(1000L, 2000L));
 
         assertEquals(2, cube.getSegments().size());
-        assertEquals(1000, seg2.getDateRangeStart());
-        assertEquals(2000, seg2.getDateRangeEnd());
+        assertEquals(new TSRange(1000L, 2000L), seg2.getTSRange());
+        assertEquals(new TSRange(1000L, 2000L), seg2.getSegRange());
         assertEquals(SegmentStatusEnum.NEW, seg2.getStatus());
         seg2.setStatus(SegmentStatusEnum.READY);
 
         // merge first and second
-        CubeSegment merge = mgr.mergeSegments(cube, 0, 2000, true);
+        CubeSegment merge = mgr.mergeSegments(cube, new TSRange(0L, 2000L), null, true);
 
         assertEquals(3, cube.getSegments().size());
-        assertEquals(0, merge.getDateRangeStart());
-        assertEquals(2000, merge.getDateRangeEnd());
+        assertEquals(new TSRange(0L, 2000L), merge.getTSRange());
+        assertEquals(new TSRange(0L, 2000L), merge.getSegRange());
         assertEquals(SegmentStatusEnum.NEW, merge.getStatus());
 
         // segments are strictly ordered
@@ -116,48 +133,17 @@ public class CubeSegmentsTest extends LocalFileMetadataTestCase {
         cube.getSegments().remove(merge);
 
         // try merge at start/end at middle of segments
-        CubeSegment merge2 = mgr.mergeSegments(cube, 500, 1500, true);
-        assertEquals(3, cube.getSegments().size());
-        assertEquals(0, merge2.getDateRangeStart());
-        assertEquals(2000, merge2.getDateRangeEnd());
-    }
-
-    @Test
-    public void testSpecialAppendAndMerge() throws IOException {
-        CubeManager mgr = mgr();
-        CubeInstance cube = mgr.getCube("test_kylin_cube_without_slr_left_join_empty");
-
-        // no segment at first
-        assertEquals(0, cube.getSegments().size());
-
         try {
-            mgr.appendAndMergeSegments(cube, 1000);
+            mgr.mergeSegments(cube, new TSRange(500L, 2500L), null, true);
             fail();
-        } catch (IllegalStateException ex) {
-            // expected, append and merge requires at least one segment
+        } catch (IllegalArgumentException ex) {
+            // good
         }
 
-        // append first
-        CubeSegment seg1 = mgr.appendSegments(cube, 1000);
-        seg1.setStatus(SegmentStatusEnum.READY);
-
-        // append second and merge with first
-        Pair<CubeSegment, CubeSegment> appendAndMergeSegments = mgr.appendAndMergeSegments(cube, 2000);
-        CubeSegment seg2 = appendAndMergeSegments.getFirst();
-        CubeSegment merge = appendAndMergeSegments.getSecond();
-
+        CubeSegment merge2 = mgr.mergeSegments(cube, new TSRange(0L, 2500L), null, true);
         assertEquals(3, cube.getSegments().size());
-        assertEquals(0, seg1.getDateRangeStart());
-        assertEquals(1000, seg1.getDateRangeEnd());
-        assertEquals(1000, seg2.getDateRangeStart());
-        assertEquals(2000, seg2.getDateRangeEnd());
-        assertEquals(0, merge.getDateRangeStart());
-        assertEquals(2000, merge.getDateRangeEnd());
-
-        // segments are strictly ordered
-        assertEquals(seg1, cube.getSegments().get(0));
-        assertEquals(merge, cube.getSegments().get(1));
-        assertEquals(seg2, cube.getSegments().get(2));
+        assertEquals(new TSRange(0L, 2000L), merge2.getTSRange());
+        assertEquals(new TSRange(0L, 2000L), merge2.getSegRange());
     }
 
     @Test
@@ -169,28 +155,28 @@ public class CubeSegmentsTest extends LocalFileMetadataTestCase {
         // no segment at first
         assertEquals(0, cube.getSegments().size());
 
-        // append first
-        CubeSegment seg1 = mgr.appendSegments(cube, 1000);
+        // append the first
+        CubeSegment seg1 = mgr.appendSegment(cube, new TSRange(0L, 1000L));
         seg1.setStatus(SegmentStatusEnum.READY);
-
         assertEquals(1, cube.getSegments().size());
 
-        CubeSegment seg3 = mgr.appendSegments(cube, 2000, 3000, false, false);
+        // append the third
+        CubeSegment seg3 = mgr.appendSegment(cube, new TSRange(2000L, 3000L));
         seg3.setStatus(SegmentStatusEnum.READY);
-        CubeUpdate builder = new CubeUpdate(cube).setToAddSegs(seg3);
-
-        mgr.updateCube(builder);
         assertEquals(2, cube.getSegments().size());
 
-        CubeSegment seg2 = mgr.appendSegments(cube, 1000, 2000, false, false);
-        builder = new CubeUpdate(cube).setToAddSegs(seg2);
-        mgr.updateCube(builder);
+        // reject overlap
+        try {
+            mgr.appendSegment(cube, new TSRange(1000L, 2500L));
+            fail();
+        } catch (IllegalStateException ex) {
+            // good
+        }
+
+        // append the second
+        CubeSegment seg2 = mgr.appendSegment(cube, new TSRange(1000L, 2000L));
+        seg2.setStatus(SegmentStatusEnum.READY);
         assertEquals(3, cube.getSegments().size());
-
-    }
-
-    private void discard(Object o) {
-        // throw away input parameter
     }
 
     private CubeManager mgr() {

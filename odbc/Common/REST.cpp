@@ -45,19 +45,6 @@ using namespace concurrency::streams;
 using namespace web;
 using namespace web::json;
 
-void printLog ( const char* msg )
-{
-    time_t now = time ( 0 );
-    struct tm tstruct;
-    char buffer[100];
-    tstruct = *localtime ( &now );
-    strftime ( buffer, 100, "%Y-%m-%d.%X", &tstruct );
-    printf ( buffer );
-    printf ( "\n" );
-    printf ( msg );
-    printf ( "\n" );
-}
-
 /// <summary>
 /// Find the longest length
 /// </summary>
@@ -146,8 +133,15 @@ void overwrite ( SQLResponse* res )
             case ODBCTypes::ODBC_Type_Time :
             case ODBCTypes::ODBC_Type_Timestamp :
                 length = ScanForLength ( res -> results, i );
-                meta -> displaySize = length;
-                meta -> precision = length;
+				if (length > meta -> displaySize) 
+				{
+					meta -> displaySize = length;
+				}
+
+				if (length > meta -> precision)
+				{
+					meta -> precision = length;
+				}
                 break;
 
             default :
@@ -193,7 +187,9 @@ http_request makeRequest ( const char* username, const char* passwd, const wchar
     request . set_method ( method );
     request . set_request_uri ( uri ( uri::encode_uri ( uriStr ) ) );
     request . headers () . add ( header_names::authorization, string2wstring ( "Basic " + b64 ) );
+	request . headers () . add ( header_names::accept, "application/json" );
     request . headers () . add ( header_names::content_type, "application/json" );
+    request . headers () . add ( header_names::user_agent, "KylinODBCDriver" );
     return request;
 }
 
@@ -202,6 +198,7 @@ bool restAuthenticate ( char* serverAddr, long port, char* username, char* passw
     wstring serverAddrW = completeServerStr ( serverAddr, port );
     http_client_config config;
     config . set_timeout ( utility::seconds ( 300 ) );
+	config . set_validate_certificates ( false );
     http_client session ( serverAddrW, config );
     //can get project list only when correct username/password is given
     http_request request = makeRequest ( username, passwd, L"/kylin/api/projects", methods::GET );
@@ -223,6 +220,7 @@ void restListProjects ( char* serverAddr, long port, char* username, char* passw
     wstring serverAddrW = completeServerStr ( serverAddr, port );
     http_client_config config;
     config . set_timeout ( utility::seconds ( 300 ) );
+	config . set_validate_certificates ( false );
     http_client session ( serverAddrW, config );
     http_request request = makeRequest ( username, passwd, L"/kylin/api/projects", methods::GET );
     http_response response = session . request ( request ) . get ();
@@ -261,6 +259,7 @@ std::unique_ptr <MetadataResponse> restGetMeta ( char* serverAddr, long port, ch
     wstring serverAddrW = completeServerStr ( serverAddr, port );
     http_client_config config;
     config . set_timeout ( utility::seconds ( 300 ) );
+	config . set_validate_certificates ( false );
     http_client session ( serverAddrW, config );
     std::wstringstream wss;
     wss << L"/kylin/api/tables_and_columns" << L"?project=" << project;
@@ -292,34 +291,28 @@ std::unique_ptr <MetadataResponse> restGetMeta ( char* serverAddr, long port, ch
 
 wstring cookQuery ( wchar_t* p )
 {
-    wchar_t* q = new wchar_t[wcslen ( p ) + 1];
-    wcscpy ( q, p );
+    std::wstringstream wss;
 
-    for ( int i = 0; i < ( int ) wcslen ( q ); i++ )
+	int l = wcslen ( p );
+    for ( int i = 0; i < l; i++ )
     {
-        if ( q[i] == '\r' || q[i] == '\n' || q[i] == '\t' )
+        if ( p[i] == L'\r' || p[i] == L'\n' || p[i] == L'\t' )
         {
-            q[i] = ' ';
-        }
+            wss << L' ';
+        } 
+  
+        else if (p[i] == L'"')
+		{
+			wss << L"\\\"";
+		}
+
+		else 
+		{
+			wss << p[i];
+		}
     }
 
-    wstring ret ( q );
-    delete[] q;
-    size_t pos = 0;
-
-    for ( size_t pos = 0;; pos += 2 )
-    {
-        pos = ret . find ( L"\"", pos );
-
-        if ( pos == wstring::npos )
-        {
-            break;
-        }
-
-        ret . insert ( pos, L"\\" );
-    }
-
-    return ret;
+	return wss.str();
 }
 
 wstring getBodyString ( http_response& response )
@@ -369,51 +362,13 @@ wstring getBodyString ( http_response& response )
     return ret;
 }
 
-std::unique_ptr <SQLResponse> restQuery ( wchar_t* rawSql, char* serverAddr, long port, char* username,
-                                          char* passwd,
-                                          char* project )
+std::unique_ptr <SQLResponse> convertToSQLResponse ( int statusFlag,
+										  wstring responseStr )
 {
-    //using local cache to intercept probing queries
-    std::unique_ptr <SQLResponse> cachedQueryRes = loadCache ( rawSql );
-
-    if ( cachedQueryRes != NULL )
-    {
-        return cachedQueryRes;
-    }
-
-    //real requesting
-    wstring serverAddrW = completeServerStr ( serverAddr, port );
-    http_client_config config;
-    config . set_timeout ( utility::seconds ( 36000 ) );
-    http_client session ( serverAddrW, config );
-    http_request request = makeRequest ( username, passwd, L"/kylin/api/query", methods::POST );
-    wstring sql = cookQuery ( rawSql );
-    std::wstringstream wss;
-    wss << L"{ \"acceptPartial\": false, \"project\" : \"" << project << L"\", " << " \"sql\" : \"" << sql << L"\" }" ;
-    request . set_body ( wss . str (), L"application/json" );
-    request . headers () . add ( header_names::accept_encoding, "gzip,deflate" );
-    http::status_code status;
-    http_response response;
-
-    try
-    {
-        response = session . request ( request ) . get ();
-        status = response . status_code ();
-    }
-
-    catch ( std::exception& e )
-    {
-        std::stringstream ss;
-        ss << "An exception is throw Error message: " << e . what ();
-        throw exception ( ss . str () . c_str () );
-    }
-
-    wstring ret = getBodyString ( response );
-
-    if ( status == status_codes::OK )
+    if ( statusFlag == 1 )
     {
         //convert to json
-        web::json::value actualRes = web::json::value::parse ( ret );
+        web::json::value actualRes = web::json::value::parse ( responseStr );
         std::unique_ptr <SQLResponse> r = SQLResponseFromJSON ( actualRes );
 
         if ( r -> isException == true )
@@ -426,11 +381,96 @@ std::unique_ptr <SQLResponse> restQuery ( wchar_t* rawSql, char* serverAddr, lon
         return r;
     }
 
-    else if ( status == status_codes::InternalError )
+    else if ( statusFlag == 0 )
     {
-        std::unique_ptr <ErrorMessage> em = ErrorMessageFromJSON ( web::json::value::parse ( ret ) );
+        std::unique_ptr <ErrorMessage> em = ErrorMessageFromJSON ( web::json::value::parse ( responseStr ) );
         string expMsg = wstring2string ( em -> msg );
         throw exception ( expMsg . c_str () );
+    }
+
+    return NULL;
+}
+
+wstring requestQuery ( wchar_t* rawSql, char* serverAddr, long port, char* username,
+                                          char* passwd,
+                                          char* project,
+										  bool isPrepare,
+										  int* statusFlag)
+{
+    //using local cache to intercept probing queries
+    const wchar_t* cachedQueryRes = NULL;
+	
+	if (isPrepare) {
+		cachedQueryRes = loadCache ( rawSql  );
+	}
+
+    if ( cachedQueryRes != NULL )
+    {
+		*statusFlag = 1;
+        return cachedQueryRes;
+    }
+
+    //real requesting
+    wstring serverAddrW = completeServerStr ( serverAddr, port );
+    http_client_config config;
+    config . set_timeout ( utility::seconds ( 36000 ) );
+	config . set_validate_certificates ( false );
+
+	//uncomment these lines for debug with proxy
+	//wstring p = L"http://127.0.0.1:8888";
+	//config.set_proxy(web_proxy(p));
+
+    http_client session ( serverAddrW, config );
+    http_request request;
+	
+	if (!isPrepare) 
+	{
+		request = makeRequest ( username, passwd, L"/kylin/api/query", methods::POST );
+	}
+
+	else
+	{
+		request = makeRequest ( username, passwd, L"/kylin/api/query/prestate", methods::POST );
+	}
+
+    wstring sql = cookQuery ( rawSql );
+    std::wstringstream wss;
+    wss << L"{ \"acceptPartial\": false, \"project\" : \"" << project << L"\", " << " \"sql\" : \"" << sql << L"\"";
+	
+	// backward compatible, Apache Kylin <=2.0
+	if (isPrepare)
+	{
+		wss << L", \"params\" : [] ";
+	}
+
+	wss << L"}" ;
+
+    request . set_body ( wss . str (), L"application/json" );
+    request . headers () . add ( header_names::accept_encoding, "gzip,deflate" );
+    http_response response;
+	http::status_code status;
+
+	try
+    {
+        response = session . request ( request ) . get ();
+        status = response . status_code ();
+    }
+
+    catch ( std::exception& e )
+    {
+        std::stringstream ss;
+        ss << "An exception is throw Error message: " << e . what ();
+        throw exception ( ss . str () . c_str () );
+    }
+
+	if ( status == status_codes::OK )
+    {
+        *statusFlag = 1;
+    }
+
+    else if ( status == status_codes::InternalError )
+    {
+        *statusFlag = 0;
     }
 
     else
@@ -438,6 +478,12 @@ std::unique_ptr <SQLResponse> restQuery ( wchar_t* rawSql, char* serverAddr, lon
         throw exception ( "Unknown exception in rest query with return code " + status );
     }
 
-    return NULL;
+	wstring ret = getBodyString ( response );
+
+    if (*statusFlag == 1 && isPrepare) 
+    {
+        storeCache(rawSql, ret.c_str());
+    }
+	return ret;
 }
 

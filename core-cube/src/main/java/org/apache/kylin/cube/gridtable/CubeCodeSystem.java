@@ -19,9 +19,11 @@
 package org.apache.kylin.cube.gridtable;
 
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.util.Collections;
 import java.util.Map;
 
+import org.apache.kylin.common.util.Bytes;
 import org.apache.kylin.common.util.ImmutableBitSet;
 import org.apache.kylin.dimension.DictionaryDimEnc;
 import org.apache.kylin.dimension.DictionaryDimEnc.DictionarySerializer;
@@ -71,12 +73,11 @@ public class CubeCodeSystem implements IGTCodeSystem {
         for (int i = 0; i < serializers.length; i++) {
             DimensionEncoding dimEnc = i < dimEncs.length ? dimEncs[i] : null;
 
-            // for dimensions
             if (dimEnc != null) {
+                // for dimensions
                 serializers[i] = dimEnc.asDataTypeSerializer();
-            }
-            // for measures
-            else {
+            } else {
+                // for measures
                 serializers[i] = DataTypeSerializer.create(info.getColumnType(i));
             }
         }
@@ -119,7 +120,13 @@ public class CubeCodeSystem implements IGTCodeSystem {
             if (dictEnc.getRoundingFlag() != roundingFlag) {
                 serializer = dictEnc.copy(roundingFlag).asDataTypeSerializer();
             }
-            serializer.serialize(value, buf);
+            try {
+                serializer.serialize(value, buf);
+            } catch (IllegalArgumentException ex) {
+                IllegalArgumentException rewordEx = new IllegalArgumentException("Column " + col + " value '" + toStringBinary(value) + "' met dictionary error: " + ex.getMessage());
+                rewordEx.setStackTrace(ex.getStackTrace());
+                throw rewordEx;
+            }
         } else {
             if (value instanceof String) {
                 // for dimensions; measures are converted by MeasureIngestor before reaching this point
@@ -127,6 +134,14 @@ public class CubeCodeSystem implements IGTCodeSystem {
             }
             serializer.serialize(value, buf);
         }
+    }
+
+    private String toStringBinary(Object value) {
+        if (value == null)
+            return "Null";
+        byte[] bytes;
+        bytes = value.toString().getBytes(Charset.forName("UTF-8"));
+        return Bytes.toStringBinary(bytes);
     }
 
     @Override
@@ -162,4 +177,8 @@ public class CubeCodeSystem implements IGTCodeSystem {
         return result;
     }
 
+    @Override
+    public DataTypeSerializer<?> getSerializer(int col) {
+        return serializers[col];
+    }
 }

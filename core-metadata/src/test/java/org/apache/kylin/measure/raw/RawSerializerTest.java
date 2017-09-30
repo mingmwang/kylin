@@ -18,7 +18,7 @@
 
 package org.apache.kylin.measure.raw;
 
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
 
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
@@ -26,15 +26,27 @@ import java.util.List;
 
 import org.apache.kylin.common.util.ByteArray;
 import org.apache.kylin.common.util.BytesUtil;
+import org.apache.kylin.common.util.LocalFileMetadataTestCase;
 import org.apache.kylin.metadata.datatype.DataType;
+import org.junit.AfterClass;
+import org.junit.BeforeClass;
 import org.junit.Test;
 
-public class RawSerializerTest {
-    static {
+public class RawSerializerTest extends LocalFileMetadataTestCase {
+    private static RawSerializer rawSerializer;
+
+    @BeforeClass
+    public static void setUp() throws Exception {
+        staticCreateTestMetadata();
+
         DataType.register("raw");
+        rawSerializer = new RawSerializer(DataType.getType("raw"));
     }
 
-    private RawSerializer rawSerializer = new RawSerializer(DataType.getType("raw"));
+    @AfterClass
+    public static void after() throws Exception {
+        cleanAfterClass();
+    }
 
     @Test
     public void testPeekLength() {

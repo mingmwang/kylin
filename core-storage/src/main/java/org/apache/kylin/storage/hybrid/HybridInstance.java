@@ -21,10 +21,12 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.RootPersistentEntity;
+import org.apache.kylin.metadata.model.ColumnDesc;
 import org.apache.kylin.metadata.model.DataModelDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
@@ -66,7 +68,8 @@ public class HybridInstance extends RootPersistentEntity implements IRealization
 
     private volatile IRealization[] realizations = null;
     private List<TblColRef> allDimensions = null;
-    private List<TblColRef> allColumns = null;
+    private Set<TblColRef> allColumns = null;
+    private Set<ColumnDesc> allColumnDescs = null;
     private List<MeasureDesc> allMeasures = null;
     private long dateRangeStart;
     private long dateRangeEnd;
@@ -136,7 +139,8 @@ public class HybridInstance extends RootPersistentEntity implements IRealization
             }
 
             allDimensions = Lists.newArrayList(dimensions);
-            allColumns = Lists.newArrayList(columns);
+            allColumns = columns;
+            allColumnDescs = asColumnDescs(allColumns);
             allMeasures = Lists.newArrayList(measures);
 
             Collections.sort(realizationList, new Comparator<IRealization>() {
@@ -165,23 +169,33 @@ public class HybridInstance extends RootPersistentEntity implements IRealization
         }
     }
 
+    private Set<ColumnDesc> asColumnDescs(Set<TblColRef> columns) {
+        LinkedHashSet<ColumnDesc> result = new LinkedHashSet<>();
+        for (TblColRef col : columns) {
+            result.add(col.getColumnDesc());
+        }
+        return result;
+    }
+
     @Override
     public CapabilityResult isCapable(SQLDigest digest) {
         CapabilityResult result = new CapabilityResult();
         result.cost = Integer.MAX_VALUE;
-        
+
         for (IRealization realization : getRealizations()) {
             CapabilityResult child = realization.isCapable(digest);
             if (child.capable) {
                 result.capable = true;
                 result.cost = Math.min(result.cost, child.cost);
                 result.influences.addAll(child.influences);
+            } else {
+                result.incapableCause = child.incapableCause;
             }
         }
-        
+
         if (result.cost > 0)
             result.cost--; // let hybrid win its children
-        
+
         return result;
     }
 
@@ -191,21 +205,22 @@ public class HybridInstance extends RootPersistentEntity implements IRealization
     }
 
     @Override
-    public DataModelDesc getDataModelDesc() {
+    public DataModelDesc getModel() {
         if (this.getLatestRealization() != null)
-            return this.getLatestRealization().getDataModelDesc();
+            return this.getLatestRealization().getModel();
         return null;
     }
 
     @Override
-    public String getFactTable() {
-        return getRealizations()[0].getFactTable();
+    public Set<TblColRef> getAllColumns() {
+        init();
+        return allColumns;
     }
 
     @Override
-    public List<TblColRef> getAllColumns() {
+    public Set<ColumnDesc> getAllColumnDescs() {
         init();
-        return allColumns;
+        return allColumnDescs;
     }
 
     @Override
@@ -238,6 +253,7 @@ public class HybridInstance extends RootPersistentEntity implements IRealization
         return getType() + "[name=" + name + "]";
     }
 
+    @Override
     public KylinConfig getConfig() {
         return config;
     }
@@ -257,8 +273,8 @@ public class HybridInstance extends RootPersistentEntity implements IRealization
     }
 
     @Override
-    public String getModelName() {
-        return this.getLatestRealization().getModelName();
+    public boolean supportsLimitPushDown() {
+        return false;
     }
 
     @Override

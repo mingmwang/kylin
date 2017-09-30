@@ -21,15 +21,15 @@
        xmlns:cache="http://www.springframework.org/schema/cache"
        xmlns:p="http://www.springframework.org/schema/p"
        xsi:schemaLocation="http://www.springframework.org/schema/beans
-    http://www.springframework.org/schema/beans/spring-beans-3.1.xsd
+    http://www.springframework.org/schema/beans/spring-beans-4.3.xsd
     http://www.springframework.org/schema/context
-    http://www.springframework.org/schema/context/spring-context-3.1.xsd
+    http://www.springframework.org/schema/context/spring-context-4.3.xsd
     http://www.springframework.org/schema/task
-    http://www.springframework.org/schema/task/spring-task-3.1.xsd
+    http://www.springframework.org/schema/task/spring-task-4.3.xsd
     http://www.springframework.org/schema/mvc
-    http://www.springframework.org/schema/mvc/spring-mvc-3.1.xsd
+    http://www.springframework.org/schema/mvc/spring-mvc-4.3.xsd
     http://www.springframework.org/schema/aop
-    http://www.springframework.org/schema/aop/spring-aop-3.1.xsd
+    http://www.springframework.org/schema/aop/spring-aop-4.3.xsd
     http://www.springframework.org/schema/cache
     http://www.springframework.org/schema/cache/spring-cache.xsd">
 
@@ -48,8 +48,7 @@
 
 
     <!-- Rest service binding -->
-    <bean
-            class="org.springframework.web.servlet.mvc.annotation.DefaultAnnotationHandlerMapping"/>
+    <bean class="org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerMapping"/>
 
     <bean id="mappingJacksonHttpMessageConverter"
           class="org.springframework.http.converter.json.MappingJackson2HttpMessageConverter"/>
@@ -58,8 +57,7 @@
     <bean id="formHttpMessageConverter"
           class="org.springframework.http.converter.FormHttpMessageConverter"/>
 
-    <bean
-            class="org.springframework.web.servlet.mvc.annotation.AnnotationMethodHandlerAdapter">
+    <bean class="org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter">
         <property name="messageConverters">
             <list>
                 <ref bean="mappingJacksonHttpMessageConverter"/>
@@ -69,19 +67,11 @@
         </property>
     </bean>
 
-    <bean
-            class="org.springframework.web.servlet.view.ContentNegotiatingViewResolver">
-        <property name="mediaTypes">
-            <map>
-                <entry key="html" value="text/html"/>
-                <entry key="json" value="application/json"/>
-            </map>
-        </property>
+    <bean class="org.springframework.web.servlet.view.ContentNegotiatingViewResolver">
         <property name="viewResolvers">
             <list>
                 <bean class="org.springframework.web.servlet.view.BeanNameViewResolver"/>
-                <bean
-                        class="org.springframework.web.servlet.view.InternalResourceViewResolver">
+                <bean class="org.springframework.web.servlet.view.InternalResourceViewResolver">
                     <!-- <property name="prefix" value="/WEB-INF/jsp/"/> -->
                     <property name="suffix" value=".jsp"/>
                 </bean>
@@ -89,8 +79,7 @@
         </property>
         <property name="defaultViews">
             <list>
-                <bean
-                        class="org.springframework.web.servlet.view.json.MappingJackson2JsonView"/>
+                <bean class="org.springframework.web.servlet.view.json.MappingJackson2JsonView"/>
             </list>
         </property>
     </bean>
@@ -112,13 +101,4 @@
               p:configLocation="classpath:ehcache-test.xml" p:shared="true"/>
     </beans>
 
-    <!-- hbase storage/global lock Config -->
-    <beans profile="ldap,saml">
-        <bean id="aclHBaseStorage" class="org.apache.kylin.rest.security.RealAclHBaseStorage"/>
-        <bean id="jobLock" class="org.apache.kylin.storage.hbase.util.ZookeeperJobLock"/>
-    </beans>
-    <beans profile="testing">
-        <bean id="aclHBaseStorage" class="org.apache.kylin.rest.security.MockAclHBaseStorage"/>
-        <bean id="jobLock" class="org.apache.kylin.job.lock.MockJobLock"/>
-    </beans>
 </beans>

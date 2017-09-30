@@ -18,6 +18,11 @@
 
 package org.apache.kylin.metadata.filter;
 
+/**
+ * there are two types of transformers: 
+ * 1. transformation requiring storage-specific details (say segment dict)
+ * 2. others
+ */
 public interface ITupleFilterTransformer {
     TupleFilter transform(TupleFilter tupleFilter);
 }

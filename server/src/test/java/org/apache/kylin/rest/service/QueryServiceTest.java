@@ -23,11 +23,13 @@ import java.sql.SQLException;
 
 import org.apache.kylin.job.exception.JobException;
 import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.query.QueryConnection;
 import org.apache.kylin.rest.request.SQLRequest;
 import org.apache.kylin.rest.response.SQLResponse;
 import org.junit.Assert;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 /**
  * @author xduo
@@ -35,17 +37,19 @@ import org.springframework.beans.factory.annotation.Autowired;
 public class QueryServiceTest extends ServiceTestBase {
 
     @Autowired
+    @Qualifier("queryService")
     QueryService queryService;
 
     @Autowired
+    @Qualifier("cacheService")
     private CacheService cacheService;
-    
+
     @Test
     public void testBasics() throws JobException, IOException, SQLException {
         Assert.assertNotNull(queryService.getConfig());
         Assert.assertNotNull(queryService.getConfig());
         Assert.assertNotNull(queryService.getMetadataManager());
-        Assert.assertNotNull(cacheService.getOLAPDataSource(ProjectInstance.DEFAULT_PROJECT_NAME));
+        Assert.assertNotNull(QueryConnection.getConnection(ProjectInstance.DEFAULT_PROJECT_NAME));
 
         //        Assert.assertTrue(queryService.getQueries("ADMIN").size() == 0);
         //

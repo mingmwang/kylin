@@ -25,11 +25,12 @@ import org.apache.kylin.common.util.ByteArray;
 import org.apache.kylin.common.util.BytesUtil;
 import org.apache.kylin.common.util.ImmutableBitSet;
 import org.apache.kylin.gridtable.GTInfo;
+import org.apache.kylin.gridtable.GTInfo.Builder;
 import org.apache.kylin.gridtable.GTRecord;
 import org.apache.kylin.gridtable.GTSampleCodeSystem;
 import org.apache.kylin.gridtable.GTScanRequest;
+import org.apache.kylin.gridtable.GTScanRequestBuilder;
 import org.apache.kylin.gridtable.IGTScanner;
-import org.apache.kylin.gridtable.GTInfo.Builder;
 import org.apache.kylin.metadata.datatype.DataType;
 import org.apache.kylin.metadata.filter.ColumnTupleFilter;
 import org.apache.kylin.metadata.filter.CompareTupleFilter;
@@ -110,7 +111,7 @@ public class GTScannerBenchmark {
     @SuppressWarnings("unused")
     private void testAggregate(ImmutableBitSet groupBy) throws IOException {
         long t = System.currentTimeMillis();
-        GTScanRequest req = new GTScanRequest(info, null, dimensions, groupBy, metrics, aggrFuncs, null, true, 10);
+        GTScanRequest req = new GTScanRequestBuilder().setInfo(info).setRanges(null).setDimensions(dimensions).setAggrGroupBy(groupBy).setAggrMetrics(metrics).setAggrMetricsFuncs(aggrFuncs).setFilterPushDown(null).createGTScanRequest();
         IGTScanner scanner = req.decorateScanner(gen.generate(N));
 
         long count = 0;
@@ -134,19 +135,19 @@ public class GTScannerBenchmark {
 
     //@Test
     public void testFilter2() throws IOException {
-        testFilter( //
-                and( //
+        testFilter(//
+                and(//
                         gt(col(0), 5), //
                         eq(col(2), 2, 4)));
     }
 
     //@Test
     public void testFilter3() throws IOException {
-        testFilter( //
-                and( //
+        testFilter(//
+                and(//
                         gt(col(0), 2), //
                         eq(col(4), 1, 3, 5, 9, 12, 14, 23, 43, 52, 78, 92), //
-                        or( //
+                        or(//
                                 eq(col(1), 2, 4), //
                                 eq(col(2), 2, 4, 5, 9))));
     }
@@ -154,14 +155,14 @@ public class GTScannerBenchmark {
     @SuppressWarnings("unused")
     private void testFilter(TupleFilter filter) throws IOException {
         long t = System.currentTimeMillis();
-        GTScanRequest req = new GTScanRequest(info, null, info.getAllColumns(), filter);
+        GTScanRequest req = new GTScanRequestBuilder().setInfo(info).setRanges(null).setDimensions(info.getAllColumns()).setFilterPushDown(filter).createGTScanRequest();
         IGTScanner scanner = req.decorateScanner(gen.generate(N));
 
         long count = 0;
         for (GTRecord rec : scanner) {
             count++;
         }
-        
+
         t = System.currentTimeMillis() - t;
         System.out.println(N + " records filtered to " + count + ", " + calcSpeed(t) + "K rec/sec");
     }
@@ -213,14 +214,14 @@ public class GTScannerBenchmark {
     private ColumnTupleFilter col(int i) {
         return new ColumnTupleFilter(info.colRef(i));
     }
-    
+
     public static void main(String[] args) throws IOException {
         GTScannerBenchmark benchmark = new GTScannerBenchmark();
-        
+
         benchmark.testFilter1();
         benchmark.testFilter2();
         benchmark.testFilter3();
-        
+
         benchmark.testAggregate2();
         benchmark.testAggregate2_();
         benchmark.testAggregate4();

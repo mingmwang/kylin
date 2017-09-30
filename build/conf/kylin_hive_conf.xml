@@ -22,15 +22,15 @@
     </property>
 
     <property>
-        <name>dfs.block.size</name>
-        <value>33554432</value>
-        <description>32MB, want more mappers for in-mem cubing, thus smaller the DFS block size</description>
+        <name>hive.exec.compress.output</name>
+        <value>true</value>
+        <description>Enable compress</description>
     </property>
 
     <property>
-        <name>hive.exec.compress.output</name>
+        <name>hive.auto.convert.join</name>
         <value>true</value>
-        <description>enable compress</description>
+        <description>Enables the optimization about converting common join into mapjoin</description>
     </property>
 
     <property>
@@ -41,48 +41,38 @@
 
     <property>
         <name>hive.auto.convert.join.noconditionaltask.size</name>
-        <value>300000000</value>
+        <value>100000000</value>
         <description>enable map-side join</description>
     </property>
 
+    <!--
+    The default map outputs compress codec is org.apache.hadoop.io.compress.DefaultCodec,
+    if SnappyCodec is supported, org.apache.hadoop.io.compress.SnappyCodec could be used.
+    -->
+    <!--
     <property>
         <name>mapreduce.map.output.compress.codec</name>
         <value>org.apache.hadoop.io.compress.SnappyCodec</value>
         <description></description>
     </property>
+    -->
+    <!--
+    The default job outputs compress codec is org.apache.hadoop.io.compress.DefaultCodec,
+    if SnappyCodec is supported, org.apache.hadoop.io.compress.SnappyCodec could be used.
+    -->
+    <!--
     <property>
         <name>mapreduce.output.fileoutputformat.compress.codec</name>
         <value>org.apache.hadoop.io.compress.SnappyCodec</value>
         <description></description>
     </property>
-    
     <property>
-        <name>hive.merge.mapfiles</name>
-        <value>true</value>
-        <description>Enable hive file merge on mapper only job</description>
-    </property>
-    <property>
-        <name>hive.merge.mapredfiles</name>
-        <value>true</value>
-        <description>Enable hive file merge on map-reduce job</description>
-    </property>
-    <property>
-        <name>mapred.output.compression.type</name>
+        <name>mapreduce.output.fileoutputformat.compress.type</name>
         <value>BLOCK</value>
         <description>The compression type to use for job outputs</description>
     </property>
-    <property>
-        <name>hive.merge.size.per.task</name>
-        <value>256000000</value>
-        <description>Size for the merged file</description>
-    </property>
 
-    <property>
-        <name>hive.support.concurrency</name>
-        <value>false</value>
-        <description>Hive concurrency lock</description>
-    </property>
-
+    -->
     <property>
         <name>mapreduce.job.split.metainfo.maxsize</name>
         <value>-1</value>
@@ -90,5 +80,23 @@
             The JobTracker won't attempt to read split metainfo files bigger than
             the configured value. No limits if set to -1.
         </description>
+    </property>
+
+    <property>
+        <name>hive.stats.autogather</name>
+        <value>true</value>
+        <description>Collect statistics for newly created intermediate table</description>
+    </property>
+
+    <property>
+        <name>hive.merge.mapfiles</name>
+        <value>false</value>
+        <description>Disable Hive's auto merge</description>
+    </property>
+
+    <property>
+        <name>hive.merge.mapredfiles</name>
+        <value>false</value>
+        <description>Disable Hive's auto merge</description>
     </property>
 </configuration>

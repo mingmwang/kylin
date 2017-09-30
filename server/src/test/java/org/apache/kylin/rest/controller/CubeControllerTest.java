@@ -23,7 +23,9 @@ import java.io.StringWriter;
 import java.util.List;
 
 import org.apache.kylin.cube.CubeInstance;
+import org.apache.kylin.cube.CubeSegment;
 import org.apache.kylin.cube.model.CubeDesc;
+import org.apache.kylin.metadata.model.SegmentRange.TSRange;
 import org.apache.kylin.rest.exception.InternalErrorException;
 import org.apache.kylin.rest.request.CubeRequest;
 import org.apache.kylin.rest.service.CubeService;
@@ -34,6 +36,7 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.Lists;
@@ -47,10 +50,15 @@ public class CubeControllerTest extends ServiceTestBase {
     private CubeDescController cubeDescController;
 
     @Autowired
+    @Qualifier("cubeMgmtService")
     CubeService cubeService;
+
     @Autowired
+    @Qualifier("jobService")
     JobService jobService;
+
     @Autowired
+    @Qualifier("streamingMgmtService")
     StreamingService streamingService;
 
     @Before
@@ -60,7 +68,6 @@ public class CubeControllerTest extends ServiceTestBase {
         cubeController = new CubeController();
         cubeController.setCubeService(cubeService);
         cubeController.setJobService(jobService);
-        cubeController.setStreamingService(streamingService);
 
         cubeDescController = new CubeDescController();
         cubeDescController.setCubeService(cubeService);
@@ -121,7 +128,7 @@ public class CubeControllerTest extends ServiceTestBase {
         cubeController.deleteCube(newCubeName);
     }
 
-    @Test (expected=InternalErrorException.class)
+    @Test(expected = InternalErrorException.class)
     public void testDeleteSegmentNew() throws IOException {
         String cubeName = "test_kylin_cube_with_slr_ready_3_segments";
         CubeDesc[] cubes = cubeDescController.getCube(cubeName);
@@ -130,7 +137,7 @@ public class CubeControllerTest extends ServiceTestBase {
         cubeController.deleteSegment(cubeName, "20131212000000_20140112000000");
     }
 
-    @Test (expected=InternalErrorException.class)
+    @Test(expected = InternalErrorException.class)
     public void testDeleteSegmentNotExist() throws IOException {
         String cubeName = "test_kylin_cube_with_slr_ready_3_segments";
         CubeDesc[] cubes = cubeDescController.getCube(cubeName);
@@ -139,8 +146,7 @@ public class CubeControllerTest extends ServiceTestBase {
         cubeController.deleteSegment(cubeName, "not_exist_segment");
     }
 
-
-    @Test (expected=InternalErrorException.class)
+    @Test(expected = InternalErrorException.class)
     public void testDeleteSegmentInMiddle() throws IOException {
         String cubeName = "test_kylin_cube_with_slr_ready_3_segments";
         CubeDesc[] cubes = cubeDescController.getCube(cubeName);
@@ -164,5 +170,35 @@ public class CubeControllerTest extends ServiceTestBase {
         Assert.assertTrue(segNumber == newSegNumber + 1);
     }
 
+
+    @Test
+    public void testGetHoles() throws IOException {
+        String cubeName = "test_kylin_cube_with_slr_ready_3_segments";
+        CubeDesc[] cubes = cubeDescController.getCube(cubeName);
+        Assert.assertNotNull(cubes);
+
+        CubeInstance cube = cubeService.getCubeManager().getCube(cubeName);
+        List<CubeSegment> segments = cube.getSegments();
+
+        final long dateEnd = segments.get(segments.size() -1).getTSRange().end.v;
+
+        final long ONEDAY = 24 * 60 * 60000;
+        cubeService.getCubeManager().appendSegment(cube, new TSRange(dateEnd + ONEDAY, dateEnd + ONEDAY * 2));
+
+        List<CubeSegment> holes = cubeController.getHoles(cubeName);
+
+        Assert.assertTrue(holes.size() == 1);
+
+        CubeSegment hole = holes.get(0);
+
+        Assert.assertTrue(hole.getTSRange().equals(new TSRange(dateEnd, dateEnd + ONEDAY)));
+    }
+
+
+    @Test
+    public void testGetCubes() {
+        List<CubeInstance> cubes = cubeController.getCubes(null, null, null, 1, 0);
+        Assert.assertTrue(cubes.size() == 1);
+    }
 
 }

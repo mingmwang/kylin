@@ -18,21 +18,29 @@
 package org.apache.kylin.storage.hybrid;
 
 import java.io.IOException;
+import java.util.Collection;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 import org.apache.commons.lang3.StringUtils;
 import org.apache.kylin.common.KylinConfig;
 import org.apache.kylin.common.persistence.JsonSerializer;
 import org.apache.kylin.common.persistence.ResourceStore;
 import org.apache.kylin.common.persistence.Serializer;
-import org.apache.kylin.common.restclient.Broadcaster;
-import org.apache.kylin.common.restclient.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.cachesync.Broadcaster;
+import org.apache.kylin.metadata.cachesync.Broadcaster.Event;
+import org.apache.kylin.metadata.cachesync.CaseInsensitiveStringCache;
+import org.apache.kylin.metadata.project.ProjectInstance;
+import org.apache.kylin.metadata.project.ProjectManager;
+import org.apache.kylin.metadata.project.RealizationEntry;
 import org.apache.kylin.metadata.realization.IRealization;
 import org.apache.kylin.metadata.realization.IRealizationProvider;
 import org.apache.kylin.metadata.realization.RealizationType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+
+import com.google.common.collect.Lists;
 
 /**
  */
@@ -42,7 +50,7 @@ public class HybridManager implements IRealizationProvider {
     private static final Logger logger = LoggerFactory.getLogger(HybridManager.class);
 
     // static cached instances
-    private static final ConcurrentHashMap<KylinConfig, HybridManager> CACHE = new ConcurrentHashMap<KylinConfig, HybridManager>();
+    private static final ConcurrentMap<KylinConfig, HybridManager> CACHE = new ConcurrentHashMap<KylinConfig, HybridManager>();
 
     public static HybridManager getInstance(KylinConfig config) {
         HybridManager r = CACHE.get(config);
@@ -59,7 +67,7 @@ public class HybridManager implements IRealizationProvider {
                 r = new HybridManager(config);
                 CACHE.put(config, r);
                 if (CACHE.size() > 1) {
-                    logger.warn("More than one Hybrid Manager singleton exist");
+                    logger.warn("More than one singleton exist");
                 }
                 return r;
             } catch (IOException e) {
@@ -81,39 +89,84 @@ public class HybridManager implements IRealizationProvider {
     private HybridManager(KylinConfig config) throws IOException {
         logger.info("Initializing HybridManager with config " + config);
         this.config = config;
-        this.hybridMap = new CaseInsensitiveStringCache<HybridInstance>(config, Broadcaster.TYPE.HYBRID);
-        loadAllHybridInstance();
+        this.hybridMap = new CaseInsensitiveStringCache<HybridInstance>(config, "hybrid");
+
+        // touch lower level metadata before registering my listener
+        reloadAllHybridInstance();
+        Broadcaster.getInstance(config).registerListener(new HybridSyncListener(), "hybrid", "cube");
     }
 
-    private void loadAllHybridInstance() throws IOException {
+    private class HybridSyncListener extends Broadcaster.Listener {
+
+        @Override
+        public void onClearAll(Broadcaster broadcaster) throws IOException {
+            clearCache();
+        }
+
+        @Override
+        public void onProjectSchemaChange(Broadcaster broadcaster, String project) throws IOException {
+            for (IRealization real : ProjectManager.getInstance(config).listAllRealizations(project)) {
+                if (real instanceof HybridInstance) {
+                    reloadHybridInstance(real.getName());
+                }
+            }
+        }
+
+        @Override
+        public void onEntityChange(Broadcaster broadcaster, String entity, Event event, String cacheKey) throws IOException {
+            if ("hybrid".equals(entity)) {
+                String hybridName = cacheKey;
+
+                if (event == Event.DROP)
+                    hybridMap.removeLocal(hybridName);
+                else
+                    reloadHybridInstance(hybridName);
+
+                for (ProjectInstance prj : ProjectManager.getInstance(config).findProjects(RealizationType.HYBRID, hybridName)) {
+                    broadcaster.notifyProjectSchemaUpdate(prj.getName());
+                }
+            } else if ("cube".equals(entity)) {
+                String cubeName = cacheKey;
+                for (HybridInstance hybrid : getHybridInstancesByChild(RealizationType.CUBE, cubeName)) {
+                    reloadHybridInstance(hybrid.getName());
+                }
+            }
+        }
+    }
+
+    public void reloadAllHybridInstance() throws IOException {
         ResourceStore store = getStore();
         List<String> paths = store.collectResourceRecursively(ResourceStore.HYBRID_RESOURCE_ROOT, ".json");
 
+        hybridMap.clear();
         logger.debug("Loading Hybrid from folder " + store.getReadableResourcePath(ResourceStore.HYBRID_RESOURCE_ROOT));
 
         for (String path : paths) {
-            loadHybridInstance(path);
+            reloadHybridInstanceAt(path);
         }
 
         logger.debug("Loaded " + paths.size() + " Hybrid(s)");
     }
 
-    public void reloadHybridInstanceByChild(RealizationType type, String realizationName) {
+    public List<HybridInstance> getHybridInstancesByChild(RealizationType type, String realizationName) {
+        List<HybridInstance> result = Lists.newArrayList();
         for (HybridInstance hybridInstance : hybridMap.values()) {
-            boolean includes = false;
-            for (IRealization realization : hybridInstance.getRealizations()) {
-                if (realization.getType() == type && realization.getName().equalsIgnoreCase(realizationName)) {
-                    includes = true;
-                    break;
+            for (RealizationEntry realizationEntry : hybridInstance.getRealizationEntries()) {
+                if (realizationEntry.getType() == type && realizationEntry.getRealization().equalsIgnoreCase(realizationName)) {
+                    result.add(hybridInstance);
                 }
             }
 
-            if (includes == true)
-                loadHybridInstance(HybridInstance.concatResourcePath(hybridInstance.getName()));
         }
+
+        return result;
     }
 
-    private synchronized HybridInstance loadHybridInstance(String path) {
+    public void reloadHybridInstance(String name) {
+        reloadHybridInstanceAt(HybridInstance.concatResourcePath(name));
+    }
+
+    private synchronized HybridInstance reloadHybridInstanceAt(String path) {
         ResourceStore store = getStore();
 
         HybridInstance hybridInstance = null;
@@ -146,6 +199,10 @@ public class HybridManager implements IRealizationProvider {
     @Override
     public IRealization getRealization(String name) {
         return getHybridInstance(name);
+    }
+
+    public Collection<HybridInstance> listHybridInstances() {
+        return hybridMap.values();
     }
 
     public HybridInstance getHybridInstance(String name) {

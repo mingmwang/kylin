@@ -18,13 +18,14 @@
 
 package org.apache.kylin.query.schema;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
 
 import org.apache.calcite.schema.Table;
 import org.apache.calcite.schema.impl.AbstractSchema;
 import org.apache.kylin.common.KylinConfig;
+import org.apache.kylin.common.StorageURL;
 import org.apache.kylin.cube.CubeManager;
 import org.apache.kylin.metadata.MetadataManager;
 import org.apache.kylin.metadata.model.TableDesc;
@@ -40,7 +41,8 @@ public class OLAPSchema extends AbstractSchema {
     private KylinConfig config;
     private String projectName;
     private String schemaName;
-    private String storageUrl;
+    private boolean exposeMore;
+    private StorageURL storageUrl;
     private String starSchemaUrl;
     private String starSchemaUser;
     private String starSchemaPassword;
@@ -53,9 +55,10 @@ public class OLAPSchema extends AbstractSchema {
         this.starSchemaPassword = config.getHivePassword();
     }
 
-    public OLAPSchema(String project, String schemaName) {
+    public OLAPSchema(String project, String schemaName, boolean exposeMore) {
         this.projectName = ProjectInstance.getNormalizedProjectName(project);
         this.schemaName = schemaName;
+        this.exposeMore = exposeMore;
         init();
     }
 
@@ -65,20 +68,23 @@ public class OLAPSchema extends AbstractSchema {
      * @return
      */
     @Override
-    protected Map<String, Table> getTableMap() {
+    public Map<String, Table> getTableMap() {
         return buildTableMap();
     }
 
     private Map<String, Table> buildTableMap() {
         Map<String, Table> olapTables = new HashMap<String, Table>();
-        Set<TableDesc> projectTables = ProjectManager.getInstance(config).listExposedTables(projectName);
+
+        Collection<TableDesc> projectTables = exposeMore
+                ? ProjectManager.getInstance(config).listDefinedTables(projectName)
+                : ProjectManager.getInstance(config).listExposedTables(projectName);
 
         for (TableDesc tableDesc : projectTables) {
             if (tableDesc.getDatabase().equals(schemaName)) {
                 final String tableName = tableDesc.getName();//safe to use tableDesc.getName() here, it is in a DB context now
-                final OLAPTable table = new OLAPTable(this, tableDesc);
+                final OLAPTable table = new OLAPTable(this, tableDesc, exposeMore);
                 olapTables.put(tableName, table);
-                //            logger.debug("Project " + projectName + " exposes table " + tableName);
+                //logger.debug("Project " + projectName + " exposes table " + tableName);
             }
         }
 
@@ -89,7 +95,7 @@ public class OLAPSchema extends AbstractSchema {
         return schemaName;
     }
 
-    public String getStorageUrl() {
+    public StorageURL getStorageUrl() {
         return storageUrl;
     }
 

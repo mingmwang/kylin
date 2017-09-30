@@ -18,27 +18,25 @@
 
 package org.apache.kylin.engine.mr.steps;
 
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Partitioner;
 import org.apache.kylin.common.util.BytesUtil;
 
 /**
  */
-public class FactDistinctColumnPartitioner extends Partitioner<Text, Text> {
-    private Configuration conf;
+public class FactDistinctColumnPartitioner extends Partitioner<SelfDefineSortableKey, Text> {
 
     @Override
-    public int getPartition(Text key, Text value, int numReduceTasks) {
-
-        if (key.getBytes()[0] == FactDistinctHiveColumnsMapper.MARK_FOR_HLL) {
+    public int getPartition(SelfDefineSortableKey skey, Text value, int numReduceTasks) {
+        Text key = skey.getText();
+        if (key.getBytes()[0] == FactDistinctColumnsMapper.MARK_FOR_HLL) {
             // the last reducer is for merging hll
             return numReduceTasks - 1;
+        } else if (key.getBytes()[0] == FactDistinctColumnsMapper.MARK_FOR_PARTITION_COL) {
+            // the last but one reducer is for partition col
+            return numReduceTasks - 2;
         } else {
-            int colIndex = BytesUtil.readUnsigned(key.getBytes(), 0, 1);
-            return colIndex;
+            return BytesUtil.readUnsigned(key.getBytes(), 0, 1);
         }
-
     }
-
 }

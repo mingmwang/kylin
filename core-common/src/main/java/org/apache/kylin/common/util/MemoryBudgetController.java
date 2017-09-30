@@ -1,23 +1,25 @@
 /*
- *  Licensed to the Apache Software Foundation (ASF) under one or more
- *  contributor license agreements. See the NOTICE file distributed with
- *  this work for additional information regarding copyright ownership.
- *  The ASF licenses this file to You under the Apache License, Version 2.0
- *  (the "License"); you may not use this file except in compliance with
- *  the License. You may obtain a copy of the License at
+ * Licensed to the Apache Software Foundation (ASF) under one
+ * or more contributor license agreements.  See the NOTICE file
+ * distributed with this work for additional information
+ * regarding copyright ownership.  The ASF licenses this file
+ * to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance
+ * with the License.  You may obtain a copy of the License at
  *
- *  http://www.apache.org/licenses/LICENSE-2.0
+ *     http://www.apache.org/licenses/LICENSE-2.0
  *
- *  Unless required by applicable law or agreed to in writing, software
- *  distributed under the License is distributed on an "AS IS" BASIS,
- *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- *  See the License for the specific language governing permissions and
- *  limitations under the License.
- */
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+*/
 
 package org.apache.kylin.common.util;
 
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 import org.slf4j.Logger;
@@ -27,7 +29,7 @@ import com.google.common.base.Preconditions;
 
 public class MemoryBudgetController {
 
-    private static final boolean debug = true;
+    private static final boolean debug = false;
 
     public interface MemoryConsumer {
         // return number MB released
@@ -57,13 +59,13 @@ public class MemoryBudgetController {
 
     public static final MemoryBudgetController ZERO_BUDGET = new MemoryBudgetController(0);
     public static final int ONE_MB = 1024 * 1024;
-    public static final long ONE_GB = 1024 * 1024 * 1024;
+    public static final long ONE_GB = 1024 * 1024 * 1024L;
 
     private static final Logger logger = LoggerFactory.getLogger(MemoryBudgetController.class);
 
     // all budget numbers are in MB
     private final int totalBudgetMB;
-    private final ConcurrentHashMap<MemoryConsumer, ConsumerEntry> booking = new ConcurrentHashMap<MemoryConsumer, ConsumerEntry>();
+    private final ConcurrentMap<MemoryConsumer, ConsumerEntry> booking = new ConcurrentHashMap<MemoryConsumer, ConsumerEntry>();
     private int totalReservedMB;
     private final ReentrantLock lock = new ReentrantLock();
 
@@ -99,7 +101,7 @@ public class MemoryBudgetController {
     public void reserveInsist(MemoryConsumer consumer, int requestMB) {
         if (requestMB > totalBudgetMB)
             throw new NotEnoughBudgetException();
-        
+
         long waitStart = 0;
         while (true) {
             try {
@@ -118,6 +120,7 @@ public class MemoryBudgetController {
                 try {
                     lock.wait();
                 } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
                     throw new NotEnoughBudgetException(e);
                 }
             }
@@ -255,6 +258,7 @@ public class MemoryBudgetController {
                 lastMB = thisMB;
             }
         } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
             logger.error("", e);
             return getSystemAvailMB();
         }
@@ -274,7 +278,6 @@ public class MemoryBudgetController {
         return (int) (getSystemAvailBytes() / ONE_MB);
     }
 
-
     // protective estimate of memory usage, prefer overestimate rather than underestimate
     public static class MemoryWaterLevel {
         int lowAvail = Integer.MAX_VALUE;
@@ -285,7 +288,7 @@ public class MemoryBudgetController {
             int mb = MemoryBudgetController.getSystemAvailMB();
             if (mb < lowAvail) {
                 lowAvail = mb;
-                logger.debug("Lower system avail " + lowAvail + " MB in markHigh()");
+                logger.warn("Lower system avail " + lowAvail + " MB in markHigh()");
             }
         }
 
@@ -294,7 +297,7 @@ public class MemoryBudgetController {
             int mb = MemoryBudgetController.gcAndGetSystemAvailMB();
             if (mb > highAvail) {
                 highAvail = mb;
-                logger.debug("Higher system avail " + highAvail + " MB in markLow()");
+                logger.warn("Higher system avail " + highAvail + " MB in markLow()");
             }
         }
 

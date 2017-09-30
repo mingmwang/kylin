@@ -22,6 +22,7 @@ import static org.junit.Assert.assertTrue;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 
 import org.apache.kylin.common.KylinConfig;
@@ -33,26 +34,28 @@ import org.apache.kylin.metadata.model.FunctionDesc;
 import org.apache.kylin.metadata.model.MeasureDesc;
 import org.apache.kylin.metadata.model.TblColRef;
 import org.apache.kylin.metadata.realization.SQLDigest;
+import org.apache.kylin.metadata.realization.SQLDigest.SQLCall;
 import org.apache.kylin.metadata.tuple.ITuple;
 import org.apache.kylin.metadata.tuple.ITupleIterator;
 import org.apache.kylin.storage.IStorageQuery;
 import org.apache.kylin.storage.StorageContext;
 import org.apache.kylin.storage.StorageFactory;
 import org.apache.kylin.storage.StorageMockUtils;
-import org.apache.kylin.storage.exception.ScanOutOfLimitException;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
+
+import com.google.common.collect.Sets;
 
 public class ITStorageTest extends HBaseMetadataTestCase {
 
     private IStorageQuery storageEngine;
     private CubeInstance cube;
     private StorageContext context;
+    private StorageMockUtils mockup;
 
     @BeforeClass
     public static void setupResource() throws Exception {
@@ -70,9 +73,9 @@ public class ITStorageTest extends HBaseMetadataTestCase {
         cube = cubeMgr.getCube("test_kylin_cube_without_slr_left_join_empty");
         Assert.assertNotNull(cube);
         storageEngine = StorageFactory.createQuery(cube);
-        String url = KylinConfig.getInstanceFromEnv().getStorageUrl();
         context = new StorageContext();
-        context.setConnUrl(url);
+        context.setConnUrl(KylinConfig.getInstanceFromEnv().getStorageUrl());
+        mockup = new StorageMockUtils(cube.getModel());
     }
 
     @After
@@ -80,24 +83,14 @@ public class ITStorageTest extends HBaseMetadataTestCase {
         this.cleanupTestMetadata();
     }
 
-    @Test(expected = ScanOutOfLimitException.class)
-    @Ignore
-    public void testScanOutOfLimit() {
-        context.setThreshold(1);
-        List<TblColRef> groups = StorageMockUtils.buildGroups();
-        List<FunctionDesc> aggregations = StorageMockUtils.buildAggregations();
-
-        search(groups, aggregations, null, context);
-    }
-
     @Test
     public void test01() {
-        List<TblColRef> groups = StorageMockUtils.buildGroups();
-        List<FunctionDesc> aggregations = StorageMockUtils.buildAggregations();
-        TupleFilter filter = StorageMockUtils.buildFilter1(groups.get(0));
+        List<TblColRef> groups = mockup.buildGroups();
+        List<FunctionDesc> aggregations = mockup.buildAggregations();
+        TupleFilter filter = mockup.buildFilter1(groups.get(0));
 
         int count = search(groups, aggregations, filter, context);
-        assertTrue(count > 0);
+        assertTrue(count >= 0);
     }
 
     /*
@@ -144,15 +137,17 @@ public class ITStorageTest extends HBaseMetadataTestCase {
         int count = 0;
         ITupleIterator iterator = null;
         try {
-            SQLDigest sqlDigest = new SQLDigest("default.test_kylin_fact", filter, null, Collections.<TblColRef> emptySet(), groups, Collections.<TblColRef> emptySet(), Collections.<TblColRef> emptySet(), aggregations, new ArrayList<MeasureDesc>(), new ArrayList<SQLDigest.OrderEnum>());
-            iterator = storageEngine.search(context, sqlDigest, StorageMockUtils.newTupleInfo(groups, aggregations));
+            SQLDigest sqlDigest = new SQLDigest("default.test_kylin_fact", /*allCol*/ Collections.<TblColRef> emptySet(), /*join*/ null, //
+                    groups, /*subqueryJoinParticipants*/ Sets.<TblColRef> newHashSet(), //
+                    /*metricCol*/ Collections.<TblColRef> emptySet(), aggregations, /*aggrSqlCalls*/ Collections.<SQLCall> emptyList(), //
+                    /*filter col*/ Collections.<TblColRef> emptySet(), filter, null, //
+                    /*sortCol*/ new ArrayList<TblColRef>(), new ArrayList<SQLDigest.OrderEnum>(), false, new HashSet<MeasureDesc>());
+            iterator = storageEngine.search(context, sqlDigest, mockup.newTupleInfo(groups, aggregations));
             while (iterator.hasNext()) {
                 ITuple tuple = iterator.next();
                 System.out.println("Tuple = " + tuple);
                 count++;
             }
-        } catch (Exception e) {
-            e.printStackTrace();
         } finally {
             if (iterator != null)
                 iterator.close();
